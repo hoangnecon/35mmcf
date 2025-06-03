@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 11% 98%; /* #F5F7FA */
+  --foreground: 210 11% 15%; /* #2C3E50 */
+  --muted: 210 11% 95%; /* #F5F5F5 */
+  --muted-foreground: 210 6% 46%; /* #64748B */
+  --popover: 0 0% 100%; /* #FFFFFF */
+  --popover-foreground: 210 11% 15%; /* #2C3E50 */
+  --card: 0 0% 100%; /* #FFFFFF */
+  --card-foreground: 210 11% 15%; /* #2C3E50 */
+  --border: 210 11% 90%; /* #E2E8F0 */
+  --input: 210 11% 90%; /* #E2E8F0 */
+  --primary: 207 90% 27%; /* #003087 - KiotViet Blue */
+  --primary-foreground: 0 0% 100%; /* #FFFFFF */
+  --secondary: 210 11% 95%; /* #F5F5F5 */
+  --secondary-foreground: 210 11% 15%; /* #2C3E50 */
+  --accent: 207 90% 94%; /* #E3F2FD - Light Blue */
+  --accent-foreground: 207 90% 27%; /* #003087 */
+  --destructive: 0 84% 60%; /* #EF4444 */
+  --destructive-foreground: 0 0% 100%; /* #FFFFFF */
+  --ring: 207 90% 27%; /* #003087 */
+  --radius: 0.5rem;
+  
+  /* Chart colors */
+  --chart-1: 207 90% 27%; /* #003087 - Primary Blue */
+  --chart-2: 207 90% 54%; /* #1976D2 - Lighter Blue */
+  --chart-3: 207 90% 80%; /* #BBDEFB - Light Blue */
+  --chart-4: 45 93% 47%; /* #F57C00 - Orange */
+  --chart-5: 142 76% 36%; /* #388E3C - Green */
+}
+
+.dark {
+  --background: 210 11% 6%; /* #0F172A */
+  --foreground: 0 0% 98%; /* #F8FAFC */
+  --muted: 210 11% 13%; /* #1E293B */
+  --muted-foreground: 210 6% 64%; /* #94A3B8 */
+  --popover: 210 11% 6%; /* #0F172A */
+  --popover-foreground: 0 0% 98%; /* #F8FAFC */
+  --card: 210 11% 6%; /* #0F172A */
+  --card-foreground: 0 0% 98%; /* #F8FAFC */
+  --border: 210 11% 20%; /* #334155 */
+  --input: 210 11% 20%; /* #334155 */
+  --primary: 207 90% 54%; /* #1976D2 */
+  --primary-foreground: 0 0% 100%; /* #FFFFFF */
+  --secondary: 210 11% 13%; /* #1E293B */
+  --secondary-foreground: 0 0% 98%; /* #F8FAFC */
+  --accent: 207 90% 13%; /* #0D47A1 */
+  --accent-foreground: 207 90% 80%; /* #BBDEFB */
+  --destructive: 0 63% 31%; /* #991B1B */
+  --destructive-foreground: 0 0% 98%; /* #F8FAFC */
+  --ring: 207 90% 54%; /* #1976D2 */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+@layer components {
+  .kiot-blue {
+    background-color: hsl(207 90% 27%); /* #003087 */
+  }
+  
+  .kiot-light-blue {
+    background-color: hsl(207 90% 94%); /* #E3F2FD */
+  }
+  
+  .table-card {
+    @apply bg-white border-2 border-gray-300 rounded-lg p-4 text-center hover:border-primary hover:shadow-md transition-all cursor-pointer;
+  }
+  
+  .table-card.selected {
+    @apply bg-primary text-primary-foreground border-primary shadow-lg;
+  }
+  
+  .table-card.vip {
+    @apply border-yellow-300;
+  }
+  
+  .table-card.special {
+    @apply bg-gray-100;
+  }
+  
+  .order-item {
+    @apply border-b border-gray-100 p-4;
+  }
+  
+  .quantity-btn {
+    @apply w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors;
+  }
+  
+  .quantity-btn.decrease {
+    @apply bg-red-100 text-red-600 hover:bg-red-200;
+  }
+  
+  .quantity-btn.increase {
+    @apply bg-green-100 text-green-600 hover:bg-green-200;
+  }
+}
+
+@layer utilities {
+  .vnd-currency::after {
+    content: " VND";
+  }
+}
