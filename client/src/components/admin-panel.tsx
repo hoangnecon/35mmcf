@@ -1,9 +1,10 @@
+// client/src/components/admin-panel.tsx
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertMenuItemSchema } from "@shared/schema";
+import { insertMenuCollectionSchema } from "@shared/schema"; // Import new schema
 import { z } from "zod";
 import {
   Dialog,
@@ -21,127 +22,160 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ui/textarea"; // Keep if needed for description
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, Plus, Edit, Trash2 } from "lucide-react";
+import { X, Plus, Edit, Trash2, List } from "lucide-react"; // Added List icon
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch"; // For active/inactive toggle
+import { Label } from "@/components/ui/label"; // For Switch label
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table"; // For displaying collections
 
 interface AdminPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  menuItems: any[];
+  // menuItems prop will be removed from here as it's not managed in admin panel anymore
 }
 
-const menuItemFormSchema = insertMenuItemSchema.extend({
-  available: z.number().min(0).max(1),
+// Schema for Menu Collection form
+const menuCollectionFormSchema = insertMenuCollectionSchema.extend({
+  isActive: z.number().min(0).max(1), // Adjust for boolean-like number
 });
 
-type MenuItemFormData = z.infer<typeof menuItemFormSchema>;
+type MenuCollectionFormData = z.infer<typeof menuCollectionFormSchema>;
 
-export default function AdminPanel({ isOpen, onClose, menuItems }: AdminPanelProps) {
-  const [editingItem, setEditingItem] = useState<any>(null);
+export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
+  const [editingCollection, setEditingCollection] = useState<any>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const form = useForm<MenuItemFormData>({
-    resolver: zodResolver(menuItemFormSchema),
+  // Fetch menu collections
+  const { data: menuCollections = [], isLoading: isLoadingCollections } = useQuery({
+    queryKey: ["/api/menu-collections"],
+    enabled: isOpen,
+  });
+
+  const form = useForm<MenuCollectionFormData>({
+    resolver: zodResolver(menuCollectionFormSchema),
     defaultValues: {
       name: "",
-      price: 0,
-      category: "",
-      imageUrl: "",
-      available: 1,
+      description: "",
+      isActive: 1, // Default to active
     },
   });
 
-  // Add menu item mutation
-  const addItemMutation = useMutation({
-    mutationFn: async (data: MenuItemFormData) => {
-      const response = await apiRequest("POST", "/api/menu-items", data);
+  // Add menu collection mutation
+  const addCollectionMutation = useMutation({
+    mutationFn: async (data: MenuCollectionFormData) => {
+      const response = await apiRequest("POST", "/api/menu-collections", data);
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-collections"] });
       setShowAddForm(false);
       form.reset();
       toast({
         title: "Thành công",
-        description: "Đã thêm món mới vào thực đơn",
+        description: "Đã thêm bảng thực đơn mới",
       });
     },
+    onError: (error: any) => {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể thêm bảng thực đơn mới. Tên có thể đã tồn tại.",
+        variant: "destructive",
+      });
+    }
   });
 
-  // Update menu item mutation
-  const updateItemMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<MenuItemFormData> }) => {
-      const response = await apiRequest("PUT", `/api/menu-items/${id}`, data);
+  // Update menu collection mutation
+  const updateCollectionMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<MenuCollectionFormData> }) => {
+      const response = await apiRequest("PUT", `/api/menu-collections/${id}`, data);
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
-      setEditingItem(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-collections"] });
+      setEditingCollection(null);
+      setShowAddForm(false); // Hide form after update
       form.reset();
       toast({
         title: "Thành công",
-        description: "Đã cập nhật món ăn",
+        description: "Đã cập nhật bảng thực đơn",
       });
     },
+    onError: (error: any) => {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể cập nhật bảng thực đơn.",
+        variant: "destructive",
+      });
+    }
   });
 
-  // Delete menu item mutation
-  const deleteItemMutation = useMutation({
+  // Delete menu collection mutation
+  const deleteCollectionMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await apiRequest("DELETE", `/api/menu-items/${id}`);
+      const response = await apiRequest("DELETE", `/api/menu-collections/${id}`);
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-collections"] });
       toast({
         title: "Thành công",
-        description: "Đã xóa món ăn khỏi thực đơn",
+        description: "Đã xóa bảng thực đơn",
       });
     },
+    onError: (error: any) => {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xóa bảng thực đơn. Có thể có món ăn đang liên kết.",
+        variant: "destructive",
+      });
+    }
   });
 
-  const handleSubmit = async (data: MenuItemFormData) => {
-    if (editingItem) {
-      await updateItemMutation.mutateAsync({ id: editingItem.id, data });
+  const handleSubmit = async (data: MenuCollectionFormData) => {
+    if (editingCollection) {
+      await updateCollectionMutation.mutateAsync({ id: editingCollection.id, data });
     } else {
-      await addItemMutation.mutateAsync(data);
+      await addCollectionMutation.mutateAsync(data);
     }
   };
 
-  const handleEdit = (item: any) => {
-    setEditingItem(item);
+  const handleEdit = (collection: any) => {
+    setEditingCollection(collection);
     setShowAddForm(true);
     form.reset({
-      name: item.name,
-      price: item.price,
-      category: item.category,
-      imageUrl: item.imageUrl || "",
-      available: item.available,
+      name: collection.name,
+      description: collection.description || "",
+      isActive: collection.isActive,
     });
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm("Bạn có chắc muốn xóa món này?")) {
-      await deleteItemMutation.mutateAsync(id);
+    if (confirm("Bạn có chắc muốn xóa bảng thực đơn này? Các món ăn trong bảng này sẽ không bị xóa nhưng sẽ không còn thuộc về bảng này nữa (có thể gây lỗi nếu không được xử lý).")) {
+      await deleteCollectionMutation.mutateAsync(id);
     }
   };
 
-  const categories = [
-    "Đồ uống",
-    "Đồ ăn",
-    "Đồ ăn vặt",
-    "Tráng miệng",
-    "Món chính",
-    "Khai vị",
-  ];
+  const handleToggleActive = async (collection: any, newStatus: boolean) => {
+    await updateCollectionMutation.mutateAsync({
+      id: collection.id,
+      data: { isActive: newStatus ? 1 : 0 }
+    });
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
         <DialogHeader className="bg-primary text-primary-foreground p-4 -m-6 mb-6">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-lg font-semibold">Quản lý Admin</DialogTitle>
@@ -152,141 +186,91 @@ export default function AdminPanel({ isOpen, onClose, menuItems }: AdminPanelPro
         </DialogHeader>
 
         <div className="overflow-y-auto max-h-[70vh] p-2">
-          {/* Add New Item Button */}
+          {/* Add New Collection Button */}
           <div className="mb-6">
             <Button
               onClick={() => {
                 setShowAddForm(true);
-                setEditingItem(null);
+                setEditingCollection(null);
                 form.reset();
               }}
               className="bg-green-500 hover:bg-green-600"
             >
               <Plus className="h-4 w-4 mr-2" />
-              Thêm món mới
+              Thêm bảng thực đơn mới
             </Button>
           </div>
 
-          {/* Add/Edit Form */}
+          {/* Add/Edit Collection Form */}
           {showAddForm && (
             <div className="bg-gray-50 p-4 rounded-lg mb-6">
               <h3 className="text-lg font-semibold mb-4">
-                {editingItem ? "Chỉnh sửa món ăn" : "Thêm món mới"}
+                {editingCollection ? "Chỉnh sửa bảng thực đơn" : "Thêm bảng thực đơn mới"}
               </h3>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Tên món</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Nhập tên món..." {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="price"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Giá (VND)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              placeholder="Nhập giá..."
-                              {...field}
-                              onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="category"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Loại món</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Chọn loại món" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {categories.map((cat) => (
-                                <SelectItem key={cat} value={cat}>
-                                  {cat}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="available"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Trạng thái</FormLabel>
-                          <Select
-                            onValueChange={(value) => field.onChange(parseInt(value))}
-                            defaultValue={field.value.toString()}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="1">Có sẵn</SelectItem>
-                              <SelectItem value="0">Hết hàng</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
                   <FormField
                     control={form.control}
-                    name="imageUrl"
+                    name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>URL hình ảnh</FormLabel>
+                        <FormLabel>Tên bảng thực đơn</FormLabel>
                         <FormControl>
-                          <Input placeholder="https://example.com/image.jpg" {...field} />
+                          <Input placeholder="Ví dụ: Thực đơn chính, Thực đơn Tết..." {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
+                  <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Mô tả</FormLabel>
+                        <FormControl>
+                          <Textarea placeholder="Mô tả về bảng thực đơn này..." {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="flex items-center space-x-2">
+                    <FormField
+                      control={form.control}
+                      name="isActive"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 space-x-3 w-full">
+                          <div className="space-y-0.5">
+                            <FormLabel>Kích hoạt</FormLabel>
+                            <FormMessage />
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value === 1}
+                              onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
                   <div className="flex gap-2">
                     <Button
                       type="submit"
-                      disabled={addItemMutation.isPending || updateItemMutation.isPending}
+                      disabled={addCollectionMutation.isPending || updateCollectionMutation.isPending}
                     >
-                      {editingItem ? "Cập nhật" : "Thêm món"}
+                      {editingCollection ? "Cập nhật bảng" : "Thêm bảng"}
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => {
                         setShowAddForm(false);
-                        setEditingItem(null);
+                        setEditingCollection(null);
                         form.reset();
                       }}
                     >
@@ -298,87 +282,81 @@ export default function AdminPanel({ isOpen, onClose, menuItems }: AdminPanelPro
             </div>
           )}
 
-          {/* Menu Items List */}
+          {/* Menu Collections List */}
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-gray-50">
-              <h3 className="text-lg font-semibold">Danh sách thực đơn</h3>
+              <h3 className="text-lg font-semibold flex items-center">
+                <List className="h-5 w-5 mr-2" />
+                Danh sách bảng thực đơn
+              </h3>
             </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Tên món
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Loại
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Giá
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Trạng thái
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Thao tác
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {menuItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          {item.imageUrl && (
-                            <img
-                              src={item.imageUrl}
-                              alt={item.name}
-                              className="h-10 w-10 rounded-lg object-cover mr-3"
-                            />
-                          )}
-                          <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {item.category}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">
-                        {new Intl.NumberFormat('vi-VN').format(item.price)} VND
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            item.available
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {item.available ? "Có sẵn" : "Hết hàng"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex space-x-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEdit(item)}
-                          >
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDelete(item.id)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {isLoadingCollections ? (
+                <div className="p-4 text-center text-gray-500">Đang tải bảng thực đơn...</div>
+              ) : menuCollections.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">Chưa có bảng thực đơn nào.</div>
+              ) : (
+                <Table className="min-w-full divide-y divide-gray-200">
+                  <TableHeader className="bg-gray-50">
+                    <TableRow>
+                      <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Tên bảng
+                      </TableHead>
+                      <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Mô tả
+                      </TableHead>
+                      <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Trạng thái
+                      </TableHead>
+                      <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Thao tác
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="bg-white divide-y divide-gray-200">
+                    {menuCollections.map((collection: any) => (
+                      <TableRow key={collection.id} className="hover:bg-gray-50">
+                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {collection.name}
+                        </TableCell>
+                        <TableCell className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                          {collection.description || "Không có mô tả"}
+                        </TableCell>
+                        <TableCell className="px-6 py-4 whitespace-nowrap">
+                          <Switch
+                            checked={collection.isActive === 1}
+                            onCheckedChange={(checked) => handleToggleActive(collection, checked)}
+                            disabled={updateCollectionMutation.isPending}
+                          />
+                          <Label htmlFor={`active-switch-${collection.id}`} className="ml-2">
+                            {collection.isActive ? "Hoạt động" : "Không hoạt động"}
+                          </Label>
+                        </TableCell>
+                        <TableCell className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex space-x-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEdit(collection)}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDelete(collection.id)}
+                              className="text-red-600 hover:text-red-800"
+                              disabled={deleteCollectionMutation.isPending}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </div>
           </div>
         </div>

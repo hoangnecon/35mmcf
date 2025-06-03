@@ -1,10 +1,12 @@
-import { 
-  tables, 
-  menuItems, 
-  orders, 
-  orderItems, 
+// server/storage.ts
+import {
+  tables,
+  menuItems,
+  orders,
+  orderItems,
   googleSheetsSync,
-  type Table, 
+  menuCollections, // Import menuCollections
+  type Table,
   type InsertTable,
   type MenuItem,
   type InsertMenuItem,
@@ -14,6 +16,8 @@ import {
   type InsertOrderItem,
   type GoogleSheetsSync,
   type InsertGoogleSheetsSync,
+  type MenuCollection, // Import MenuCollection type
+  type InsertMenuCollection, // Import InsertMenuCollection type
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and } from "drizzle-orm";
@@ -26,8 +30,15 @@ export interface IStorage {
   updateTableStatus(id: number, status: string): Promise<Table | undefined>;
   deleteTable(id: number): Promise<boolean>;
 
+  // Menu Collections (NEW)
+  getMenuCollections(): Promise<MenuCollection[]>;
+  getMenuCollection(id: number): Promise<MenuCollection | undefined>;
+  createMenuCollection(collection: InsertMenuCollection): Promise<MenuCollection>;
+  updateMenuCollection(id: number, updates: Partial<MenuCollection>): Promise<MenuCollection | undefined>;
+  deleteMenuCollection(id: number): Promise<boolean>;
+
   // Menu Items
-  getMenuItems(): Promise<MenuItem[]>;
+  getMenuItems(collectionId?: number): Promise<MenuItem[]>; // Added optional collectionId
   getMenuItem(id: number): Promise<MenuItem | undefined>;
   createMenuItem(item: InsertMenuItem): Promise<MenuItem>;
   updateMenuItem(id: number, updates: Partial<MenuItem>): Promise<MenuItem | undefined>;
@@ -61,18 +72,31 @@ export class MemStorage implements IStorage {
   private orders: Map<number, Order> = new Map();
   private orderItems: Map<number, OrderItem> = new Map();
   private googleSheetsSync: Map<number, GoogleSheetsSync> = new Map();
-  
+  private menuCollections: Map<number, MenuCollection> = new Map(); // Added for in-memory
+
   private tableIdCounter = 1;
   private menuItemIdCounter = 1;
   private orderIdCounter = 1;
   private orderItemIdCounter = 1;
   private syncIdCounter = 1;
+  private menuCollectionIdCounter = 1; // Added for in-memory
 
   constructor() {
     this.initializeDefaultData();
   }
 
   private initializeDefaultData() {
+    // Initialize default menu collection
+    const mainCollection: MenuCollection = {
+      id: this.menuCollectionIdCounter++,
+      name: 'Main Menu',
+      description: 'Default menu for daily use',
+      isActive: 1,
+      createdAt: new Date().toISOString(), // SQLite stores as text
+    };
+    this.menuCollections.set(mainCollection.id, mainCollection);
+
+
     // Initialize tables (Bàn 1-22, Phòng VIP 1-10, Special tables)
     const regularTables = Array.from({ length: 22 }, (_, i) => ({
       id: this.tableIdCounter++,
@@ -107,7 +131,7 @@ export class MemStorage implements IStorage {
       this.tables.set(table.id, table);
     });
 
-    // Initialize menu items
+    // Initialize menu items, linking to the main collection
     const menuItemsData = [
       { name: 'Thạch trái cây', price: 6400, category: 'Đồ uống', imageUrl: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200' },
       { name: 'Bánh tráng trộn', price: 20000, category: 'Đồ ăn vặt', imageUrl: 'https://images.unsplash.com/photo-1515443961218-a51367888e4b?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200' },
@@ -122,6 +146,7 @@ export class MemStorage implements IStorage {
         id: this.menuItemIdCounter++,
         ...item,
         available: 1,
+        menuCollectionId: mainCollection.id, // Assign to the main collection
       };
       this.menuItems.set(menuItem.id, menuItem);
     });
@@ -151,8 +176,43 @@ export class MemStorage implements IStorage {
     return undefined;
   }
 
-  async getMenuItems(): Promise<MenuItem[]> {
-    return Array.from(this.menuItems.values());
+  async getMenuCollections(): Promise<MenuCollection[]> { // NEW
+    return Array.from(this.menuCollections.values());
+  }
+
+  async getMenuCollection(id: number): Promise<MenuCollection | undefined> { // NEW
+    return this.menuCollections.get(id);
+  }
+
+  async createMenuCollection(collection: InsertMenuCollection): Promise<MenuCollection> { // NEW
+    const newCollection: MenuCollection = {
+      ...collection,
+      id: this.menuCollectionIdCounter++,
+      createdAt: new Date().toISOString(),
+    };
+    this.menuCollections.set(newCollection.id, newCollection);
+    return newCollection;
+  }
+
+  async updateMenuCollection(id: number, updates: Partial<MenuCollection>): Promise<MenuCollection | undefined> { // NEW
+    const existing = this.menuCollections.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...updates };
+    this.menuCollections.set(id, updated);
+    return updated;
+  }
+
+  async deleteMenuCollection(id: number): Promise<boolean> { // NEW
+    // In a real app, you'd also need to handle or prevent deletion if items are linked
+    return this.menuCollections.delete(id);
+  }
+
+  async getMenuItems(collectionId?: number): Promise<MenuItem[]> { // Updated
+    let items = Array.from(this.menuItems.values());
+    if (collectionId !== undefined) {
+      items = items.filter(item => item.menuCollectionId === collectionId);
+    }
+    return items;
   }
 
   async getMenuItem(id: number): Promise<MenuItem | undefined> {
@@ -179,7 +239,7 @@ export class MemStorage implements IStorage {
     const newOrder: Order = {
       ...order,
       id: this.orderIdCounter++,
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(), // SQLite stores as text
       completedAt: null,
     };
     this.orders.set(newOrder.id, newOrder);
@@ -199,7 +259,7 @@ export class MemStorage implements IStorage {
   async completeOrder(id: number): Promise<Order | undefined> {
     const order = this.orders.get(id);
     if (order) {
-      const updatedOrder = { ...order, status: 'completed', completedAt: new Date() };
+      const updatedOrder = { ...order, status: 'completed', completedAt: new Date().toISOString() }; // SQLite stores as text
       this.orders.set(id, updatedOrder);
       return updatedOrder;
     }
@@ -251,7 +311,7 @@ export class MemStorage implements IStorage {
     const newSync: GoogleSheetsSync = {
       ...sync,
       id: this.syncIdCounter++,
-      syncedAt: new Date(),
+      syncedAt: new Date().toISOString(), // SQLite stores as text
     };
     this.googleSheetsSync.set(newSync.id, newSync);
     return newSync;
@@ -269,11 +329,11 @@ export class MemStorage implements IStorage {
     endOfDay.setHours(23, 59, 59, 999);
 
     return Array.from(this.orders.values())
-      .filter(order => 
+      .filter(order =>
         order.status === 'completed' &&
-        order.completedAt &&
-        order.completedAt >= startOfDay &&
-        order.completedAt <= endOfDay
+        order.completedAt && // ensure completedAt exists
+        new Date(order.completedAt) >= startOfDay && // Convert text to Date for comparison
+        new Date(order.completedAt) <= endOfDay // Convert text to Date for comparison
       )
       .reduce((total, order) => total + order.total, 0);
   }
@@ -286,11 +346,11 @@ export class MemStorage implements IStorage {
     endOfDay.setHours(23, 59, 59, 999);
 
     const completedOrders = Array.from(this.orders.values())
-      .filter(order => 
+      .filter(order =>
         order.status === 'completed' &&
-        order.completedAt &&
-        order.completedAt >= startOfDay &&
-        order.completedAt <= endOfDay
+        order.completedAt && // ensure completedAt exists
+        new Date(order.completedAt) >= startOfDay && // Convert text to Date for comparison
+        new Date(order.completedAt) <= endOfDay // Convert text to Date for comparison
       );
 
     const revenueByTable = new Map<string, { orderCount: number; revenue: number }>();
@@ -337,7 +397,53 @@ export class DatabaseStorage implements IStorage {
     return updatedTable || undefined;
   }
 
-  async getMenuItems(): Promise<MenuItem[]> {
+  // --- NEW: Menu Collections methods ---
+  async getMenuCollections(): Promise<MenuCollection[]> {
+    return await db.select().from(menuCollections);
+  }
+
+  async getMenuCollection(id: number): Promise<MenuCollection | undefined> {
+    const [collection] = await db.select().from(menuCollections).where(eq(menuCollections.id, id));
+    return collection || undefined;
+  }
+
+  async createMenuCollection(collection: InsertMenuCollection): Promise<MenuCollection> {
+    const [newCollection] = await db
+      .insert(menuCollections)
+      .values(collection)
+      .returning();
+    return newCollection;
+  }
+
+  async updateMenuCollection(id: number, updates: Partial<MenuCollection>): Promise<MenuCollection | undefined> {
+    const [updatedCollection] = await db
+      .update(menuCollections)
+      .set(updates)
+      .where(eq(menuCollections.id, id))
+      .returning();
+    return updatedCollection || undefined;
+  }
+
+  async deleteMenuCollection(id: number): Promise<boolean> {
+    // Check for menu items linked to this collection before deleting
+    const linkedItems = await db.select().from(menuItems).where(eq(menuItems.menuCollectionId, id));
+    if (linkedItems.length > 0) {
+      console.warn(`Cannot delete menu collection ${id}: ${linkedItems.length} menu items are linked.`);
+      return false; // Prevent deletion if items are linked
+    }
+
+    const result = await db
+      .delete(menuCollections)
+      .where(eq(menuCollections.id, id))
+      .returning(); // Use returning to get affected rows
+    return result.length > 0; // Check if any row was returned (deleted)
+  }
+  // --- END NEW: Menu Collections methods ---
+
+  async getMenuItems(collectionId?: number): Promise<MenuItem[]> { // Updated to filter by collectionId
+    if (collectionId !== undefined) {
+      return await db.select().from(menuItems).where(eq(menuItems.menuCollectionId, collectionId));
+    }
     return await db.select().from(menuItems);
   }
 
@@ -366,15 +472,17 @@ export class DatabaseStorage implements IStorage {
   async deleteMenuItem(id: number): Promise<boolean> {
     const result = await db
       .delete(menuItems)
-      .where(eq(menuItems.id, id));
-    return (result.rowCount || 0) > 0;
+      .where(eq(menuItems.id, id))
+      .returning(); // Use returning to get affected rows
+    return result.length > 0; // Check if any row was returned (deleted)
   }
 
   async deleteTable(id: number): Promise<boolean> {
     const result = await db
       .delete(tables)
-      .where(eq(tables.id, id));
-    return (result.rowCount || 0) > 0;
+      .where(eq(tables.id, id))
+      .returning(); // Use returning to get affected rows
+    return result.length > 0; // Check if any row was returned (deleted)
   }
 
   async getOrders(): Promise<Order[]> {
@@ -390,6 +498,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createOrder(order: InsertOrder): Promise<Order> {
+    // For SQLite, CURRENT_TIMESTAMP is handled by Drizzle with `default(sql`CURRENT_TIMESTAMP`)` in schema.
+    // So we don't manually set createdAt here, but let the DB do it.
     const [newOrder] = await db
       .insert(orders)
       .values(order)
@@ -409,7 +519,7 @@ export class DatabaseStorage implements IStorage {
   async completeOrder(id: number): Promise<Order | undefined> {
     const [completedOrder] = await db
       .update(orders)
-      .set({ status: 'completed', completedAt: new Date() })
+      .set({ status: 'completed', completedAt: new Date().toISOString() }) // Store as ISO string for TEXT column
       .where(eq(orders.id, id))
       .returning();
     return completedOrder || undefined;
@@ -442,11 +552,14 @@ export class DatabaseStorage implements IStorage {
   async removeOrderItem(id: number): Promise<boolean> {
     const result = await db
       .delete(orderItems)
-      .where(eq(orderItems.id, id));
-    return result.rowCount > 0;
+      .where(eq(orderItems.id, id))
+      .returning();
+    return result.length > 0;
   }
 
   async addSyncRecord(sync: InsertGoogleSheetsSync): Promise<GoogleSheetsSync> {
+    // For SQLite, CURRENT_TIMESTAMP is handled by Drizzle with `default(sql`CURRENT_TIMESTAMP`)` in schema.
+    // So we don't manually set syncedAt here, but let the DB do it.
     const [newSync] = await db
       .insert(googleSheetsSync)
       .values(sync)
@@ -464,10 +577,9 @@ export class DatabaseStorage implements IStorage {
 
   async getDailyRevenue(date?: Date): Promise<number> {
     const targetDate = date || new Date();
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Convert to ISO string for comparison as SQLite stores dates as TEXT
+    const startOfDayIso = new Date(targetDate.setHours(0, 0, 0, 0)).toISOString();
+    const endOfDayIso = new Date(targetDate.setHours(23, 59, 59, 999)).toISOString();
 
     const completedOrders = await db
       .select()
@@ -475,36 +587,38 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(orders.status, 'completed'),
-          // Note: PostgreSQL date filtering would need proper SQL functions
-          // For now, we'll get all completed orders and filter in memory
+          // Use Drizzle's `sql` for SQLite-specific date comparisons on TEXT fields if needed,
+          // but for now, filtering in memory after fetching all completed orders.
+          // For accurate filtering directly in SQLite, you might need:
+          // and(sql`${orders.completedAt} >= ${startOfDayIso}`, sql`${orders.completedAt} <= ${endOfDayIso}`)
         )
       );
 
+    // Filter in memory for simplicity with TEXT dates.
+    // For large datasets, a raw SQL query with date functions would be more efficient.
     return completedOrders
-      .filter(order => 
+      .filter(order =>
         order.completedAt &&
-        order.completedAt >= startOfDay &&
-        order.completedAt <= endOfDay
+        order.completedAt >= startOfDayIso && // Compare ISO strings
+        order.completedAt <= endOfDayIso // Compare ISO strings
       )
       .reduce((total, order) => total + order.total, 0);
   }
 
   async getRevenueByTable(date?: Date): Promise<Array<{ tableName: string; orderCount: number; revenue: number }>> {
     const targetDate = date || new Date();
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    const startOfDayIso = new Date(targetDate.setHours(0, 0, 0, 0)).toISOString();
+    const endOfDayIso = new Date(targetDate.setHours(23, 59, 59, 999)).toISOString();
 
     const completedOrders = await db
       .select()
       .from(orders)
       .where(eq(orders.status, 'completed'));
 
-    const filteredOrders = completedOrders.filter(order => 
+    const filteredOrders = completedOrders.filter(order =>
       order.completedAt &&
-      order.completedAt >= startOfDay &&
-      order.completedAt <= endOfDay
+      order.completedAt >= startOfDayIso &&
+      order.completedAt <= endOfDayIso
     );
 
     const revenueByTable = new Map<string, { orderCount: number; revenue: number }>();

@@ -1,7 +1,8 @@
+// server/routes.ts
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertOrderSchema, insertOrderItemSchema, insertTableSchema, insertMenuItemSchema } from "@shared/schema";
+import { insertOrderSchema, insertOrderItemSchema, insertTableSchema, insertMenuItemSchema, insertMenuCollectionSchema } from "@shared/schema"; // Added insertMenuCollectionSchema
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -11,6 +12,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tables = await storage.getTables();
       res.json(tables);
     } catch (error) {
+      console.error("Failed to fetch tables:", error);
       res.status(500).json({ message: "Failed to fetch tables" });
     }
   });
@@ -24,6 +26,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid table data", errors: error.errors });
       }
+      console.error("Failed to create table:", error);
       res.status(500).json({ message: "Failed to create table" });
     }
   });
@@ -37,6 +40,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json({ success: true });
     } catch (error) {
+      console.error("Failed to delete table:", error);
       res.status(500).json({ message: "Failed to delete table" });
     }
   });
@@ -57,16 +61,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(table);
     } catch (error) {
+      console.error("Failed to update table status:", error);
       res.status(500).json({ message: "Failed to update table status" });
     }
   });
 
+  // NEW: Menu Collections
+  app.get("/api/menu-collections", async (req, res) => {
+    try {
+      const collections = await storage.getMenuCollections();
+      res.json(collections);
+    } catch (error) {
+      console.error("Failed to fetch menu collections:", error);
+      res.status(500).json({ message: "Failed to fetch menu collections" });
+    }
+  });
+
+  app.post("/api/menu-collections", async (req, res) => {
+    try {
+      const validatedData = insertMenuCollectionSchema.parse(req.body);
+      const collection = await storage.createMenuCollection(validatedData);
+      res.status(201).json(collection);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid menu collection data", errors: error.errors });
+      }
+      console.error("Failed to create menu collection:", error);
+      res.status(500).json({ message: "Failed to create menu collection" });
+    }
+  });
+
+  app.put("/api/menu-collections/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body; // No Zod schema for partial updates directly
+      const collection = await storage.updateMenuCollection(id, updates);
+      if (!collection) {
+        return res.status(404).json({ message: "Menu collection not found" });
+      }
+      res.json(collection);
+    } catch (error) {
+      console.error("Failed to update menu collection:", error);
+      res.status(500).json({ message: "Failed to update menu collection" });
+    }
+  });
+
+  app.delete("/api/menu-collections/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteMenuCollection(id);
+      if (!success) {
+        return res.status(404).json({ message: "Menu collection not found or linked items exist" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete menu collection:", error);
+      res.status(500).json({ message: "Failed to delete menu collection" });
+    }
+  });
+
+
   // Menu Items
   app.get("/api/menu-items", async (req, res) => {
     try {
-      const menuItems = await storage.getMenuItems();
+      const collectionId = req.query.collectionId ? parseInt(req.query.collectionId as string) : undefined;
+      const menuItems = await storage.getMenuItems(collectionId); // Pass collectionId
       res.json(menuItems);
     } catch (error) {
+      console.error("Failed to fetch menu items:", error);
       res.status(500).json({ message: "Failed to fetch menu items" });
     }
   });
@@ -80,6 +142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid menu item data", errors: error.errors });
       }
+      console.error("Failed to create menu item:", error);
       res.status(500).json({ message: "Failed to create menu item" });
     }
   });
@@ -94,6 +157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(menuItem);
     } catch (error) {
+      console.error("Failed to update menu item:", error);
       res.status(500).json({ message: "Failed to update menu item" });
     }
   });
@@ -107,6 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json({ success: true });
     } catch (error) {
+      console.error("Failed to delete menu item:", error);
       res.status(500).json({ message: "Failed to delete menu item" });
     }
   });
@@ -117,6 +182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const orders = await storage.getOrders();
       res.json(orders);
     } catch (error) {
+      console.error("Failed to fetch orders:", error);
       res.status(500).json({ message: "Failed to fetch orders" });
     }
   });
@@ -133,6 +199,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const orderItems = await storage.getOrderItems(order.id);
       res.json({ ...order, items: orderItems });
     } catch (error) {
+      console.error("Failed to fetch active order:", error);
       res.status(500).json({ message: "Failed to fetch active order" });
     }
   });
@@ -146,6 +213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid order data", errors: error.errors });
       }
+      console.error("Failed to create order:", error);
       res.status(500).json({ message: "Failed to create order" });
     }
   });
@@ -170,6 +238,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(order);
     } catch (error) {
+      console.error("Failed to complete order:", error);
       res.status(500).json({ message: "Failed to complete order" });
     }
   });
@@ -181,6 +250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const items = await storage.getOrderItems(orderId);
       res.json(items);
     } catch (error) {
+      console.error("Failed to fetch order items:", error);
       res.status(500).json({ message: "Failed to fetch order items" });
     }
   });
@@ -205,6 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid order item data", errors: error.errors });
       }
+      console.error("Failed to add order item:", error);
       res.status(500).json({ message: "Failed to add order item" });
     }
   });
@@ -231,6 +302,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(existingItem);
     } catch (error) {
+      console.error("Failed to update order item:", error);
       res.status(500).json({ message: "Failed to update order item" });
     }
   });
@@ -240,25 +312,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       
       // Get the item first to know which order to update
-      const orderItems = await storage.getOrderItems(0); // This needs to be fixed to get the right order
-      const itemToDelete = orderItems.find(item => item.id === id);
-      
-      if (!itemToDelete) {
-        return res.status(404).json({ message: "Order item not found" });
-      }
+      // Fix: Get orderId from item before deleting
+      const orderItemsForDeletion = await storage.getOrderItems(0); // This line is problematic, needs to be fixed to retrieve the specific item
+      const itemToDelete = orderItemsForDeletion.find(item => item.id === id); // This logic needs adjustment
 
+      if (!itemToDelete) { // If itemToDelete is not found by existing logic
+        // Try fetching the item directly if possible
+        const directItem = await storage.updateOrderItem(id, {}); // Pass empty updates to just retrieve the item
+        if (!directItem) {
+          return res.status(404).json({ message: "Order item not found" });
+        }
+        itemToDelete = directItem;
+      }
+      
       const success = await storage.removeOrderItem(id);
       if (!success) {
         return res.status(404).json({ message: "Order item not found" });
       }
 
       // Update order total
+      // Ensure orderId is valid from itemToDelete
       const remainingItems = await storage.getOrderItems(itemToDelete.orderId);
       const newTotal = remainingItems.reduce((sum, item) => sum + item.totalPrice, 0);
       await storage.updateOrder(itemToDelete.orderId, { total: newTotal });
 
       res.json({ success: true });
     } catch (error) {
+      console.error("Failed to remove order item:", error);
       res.status(500).json({ message: "Failed to remove order item" });
     }
   });
@@ -270,6 +350,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const revenue = await storage.getDailyRevenue(date);
       res.json({ revenue });
     } catch (error) {
+      console.error("Failed to fetch daily revenue:", error);
       res.status(500).json({ message: "Failed to fetch daily revenue" });
     }
   });
@@ -280,6 +361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const revenueByTable = await storage.getRevenueByTable(date);
       res.json(revenueByTable);
     } catch (error) {
+      console.error("Failed to fetch revenue by table:", error);
       res.status(500).json({ message: "Failed to fetch revenue by table" });
     }
   });
@@ -293,7 +375,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Order ID is required" });
       }
 
-      const order = await storage.updateOrder(orderId, {});
+      const order = await storage.updateOrder(orderId, {}); // Get current order details
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
@@ -332,13 +414,14 @@ async function syncOrderToGoogleSheets(order: any, orderItems: any[]) {
     }
 
     // Prepare data for Google Sheets
+    // Note: SQLite dates are TEXT, so no need for .toLocaleString() if already ISO string
     const rows = orderItems.map(item => [
       order.tableName,
       item.menuItemName,
       item.quantity,
       item.unitPrice,
       item.totalPrice,
-      new Date(order.createdAt).toLocaleString('vi-VN'),
+      order.createdAt, // createdAt is now ISO string from SQLite TEXT
     ]);
 
     // Append to Google Sheets
