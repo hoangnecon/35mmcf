@@ -166,10 +166,7 @@ export default function PosPage() {
                 <ShoppingCart className="h-4 w-4 mr-2" />
                 Thực đơn
               </Button>
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white hover:bg-opacity-10">
-                <BarChart3 className="h-4 w-4 mr-2" />
-                Tín miền (93)
-              </Button>
+
             </nav>
           </div>
           <div className="flex items-center space-x-4">

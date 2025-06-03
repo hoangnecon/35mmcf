@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertOrderSchema, insertOrderItemSchema } from "@shared/schema";
+import { insertOrderSchema, insertOrderItemSchema, insertTableSchema, insertMenuItemSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -12,6 +12,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(tables);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch tables" });
+    }
+  });
+
+  app.post("/api/tables", async (req, res) => {
+    try {
+      const validatedData = insertTableSchema.parse(req.body);
+      const table = await storage.createTable(validatedData);
+      res.status(201).json(table);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid table data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create table" });
+    }
+  });
+
+  app.delete("/api/tables/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteTable(id);
+      if (!success) {
+        return res.status(404).json({ message: "Table not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete table" });
     }
   });
 
@@ -42,6 +68,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(menuItems);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch menu items" });
+    }
+  });
+
+  app.post("/api/menu-items", async (req, res) => {
+    try {
+      const validatedData = insertMenuItemSchema.parse(req.body);
+      const menuItem = await storage.createMenuItem(validatedData);
+      res.status(201).json(menuItem);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid menu item data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create menu item" });
+    }
+  });
+
+  app.put("/api/menu-items/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+      const menuItem = await storage.updateMenuItem(id, updates);
+      if (!menuItem) {
+        return res.status(404).json({ message: "Menu item not found" });
+      }
+      res.json(menuItem);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update menu item" });
+    }
+  });
+
+  app.delete("/api/menu-items/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteMenuItem(id);
+      if (!success) {
+        return res.status(404).json({ message: "Menu item not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete menu item" });
     }
   });
 

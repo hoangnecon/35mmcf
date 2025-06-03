@@ -24,11 +24,14 @@ export interface IStorage {
   getTable(id: number): Promise<Table | undefined>;
   createTable(table: InsertTable): Promise<Table>;
   updateTableStatus(id: number, status: string): Promise<Table | undefined>;
+  deleteTable(id: number): Promise<boolean>;
 
   // Menu Items
   getMenuItems(): Promise<MenuItem[]>;
   getMenuItem(id: number): Promise<MenuItem | undefined>;
   createMenuItem(item: InsertMenuItem): Promise<MenuItem>;
+  updateMenuItem(id: number, updates: Partial<MenuItem>): Promise<MenuItem | undefined>;
+  deleteMenuItem(id: number): Promise<boolean>;
 
   // Orders
   getOrders(): Promise<Order[]>;
@@ -332,6 +335,29 @@ export class DatabaseStorage implements IStorage {
       .values(item)
       .returning();
     return newItem;
+  }
+
+  async updateMenuItem(id: number, updates: Partial<MenuItem>): Promise<MenuItem | undefined> {
+    const [updatedItem] = await db
+      .update(menuItems)
+      .set(updates)
+      .where(eq(menuItems.id, id))
+      .returning();
+    return updatedItem || undefined;
+  }
+
+  async deleteMenuItem(id: number): Promise<boolean> {
+    const result = await db
+      .delete(menuItems)
+      .where(eq(menuItems.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async deleteTable(id: number): Promise<boolean> {
+    const result = await db
+      .delete(tables)
+      .where(eq(tables.id, id));
+    return (result.rowCount || 0) > 0;
   }
 
   async getOrders(): Promise<Order[]> {
