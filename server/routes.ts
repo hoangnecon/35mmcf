@@ -2,11 +2,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { 
-  insertOrderSchema, 
-  insertOrderItemSchema, 
-  insertTableSchema, 
-  insertMenuItemSchema, 
+import {
+  insertOrderSchema,
+  insertOrderItemSchema,
+  insertTableSchema,
+  insertMenuItemSchema,
   insertMenuCollectionSchema,
   type Order as OrderType, // Thêm type Order để sử dụng cho sync
   type OrderItem as OrderItemType // Thêm type OrderItem
@@ -24,7 +24,7 @@ async function syncOrderToGoogleSheets(order: OrderType, orderItems: OrderItemTy
       console.warn("GOOGLE_SHEETS_CREDENTIALS not set. Skipping Google Sheets sync.");
       return;
     }
-    
+
     let credentials;
     try {
       credentials = JSON.parse(credentialsEnv);
@@ -64,7 +64,7 @@ async function syncOrderToGoogleSheets(order: OrderType, orderItems: OrderItemTy
       });
       return;
     }
-    
+
     const res = await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: 'Sheet1!A:F', // Đảm bảo Sheet1 tồn tại
@@ -116,11 +116,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/tables/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      // Kiểm tra xem bàn có order active không trước khi xóa (nếu cần)
-      // const activeOrder = await storage.getActiveOrderByTable(id);
-      // if (activeOrder) {
-      //   return res.status(400).json({ message: "Cannot delete table with an active order." });
-      // }
       const success = await storage.deleteTable(id);
       if (!success) {
         return res.status(404).json({ message: "Table not found or could not be deleted" });
@@ -136,7 +131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const { status } = req.body;
-      
+
       if (!status || !['available', 'occupied', 'reserved'].includes(status)) {
         return res.status(400).json({ message: "Invalid status provided" });
       }
@@ -180,8 +175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/menu-collections/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      // Validate partial updates if necessary, or rely on schema for full updates
-      const updates = req.body; 
+      const updates = req.body;
       const collection = await storage.updateMenuCollection(id, updates);
       if (!collection) {
         return res.status(404).json({ message: "Menu collection not found" });
@@ -210,7 +204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Menu Items
   app.get("/api/menu-items", async (req, res) => {
     try {
-      const collectionId = req.query.collectionId ? parseInt(req.query.collectionId as string) : null; // Chuyển undefined thành null
+      const collectionId = req.query.collectionId ? parseInt(req.query.collectionId as string) : null;
       const menuItems = await storage.getMenuItems(collectionId);
       res.json(menuItems);
     } catch (error) {
@@ -236,7 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/menu-items/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const updates = req.body; // Cần validate nếu schema không phải là partial
+      const updates = req.body;
       const menuItem = await storage.updateMenuItem(id, updates);
       if (!menuItem) {
         return res.status(404).json({ message: "Menu item not found" });
@@ -280,9 +274,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid table ID" });
       }
       const order = await storage.getActiveOrderByTable(tableId);
-      
+
       if (!order) {
-        return res.json(null); // Trả về null nếu không có active order, client sẽ xử lý
+        return res.json(null);
       }
 
       const orderItems = await storage.getOrderItems(order.id);
@@ -299,10 +293,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const order = await storage.createOrder(validatedData);
       res.status(201).json(order);
     } catch (error) {
+      console.error("Error creating order (from /api/orders POST):", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid order data", errors: error.errors });
       }
-      console.error("Failed to create order:", error);
       res.status(500).json({ message: "Failed to create order" });
     }
   });
@@ -311,7 +305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const order = await storage.completeOrder(id);
-      
+
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
@@ -352,19 +346,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(orderId)) {
         return res.status(400).json({ message: "Invalid order ID" });
       }
-      // Validate data trước khi thêm orderId
-      const validatedItemData = insertOrderItemSchema.omit({ orderId: true, id: true }).parse(req.body);
-      
+
+      // 1. Validate input from client for quantity, menuItemId, and note
+      const validatedItemData = z.object({
+        menuItemId: z.number().int().positive(),
+        quantity: z.number().int().min(1),
+        note: z.string().optional(),
+      }).parse(req.body);
+
+      // 2. Lấy thông tin chi tiết của menuItem từ database
+      const menuItem = await storage.getMenuItem(validatedItemData.menuItemId);
+      if (!menuItem) {
+        return res.status(404).json({ message: "Menu item not found" });
+      }
+
+      // 3. Chuẩn bị dữ liệu để thêm vào orderItem
       const itemToAdd = {
-        ...validatedItemData,
-        orderId, // Gán orderId sau khi validate
+        orderId: orderId,
+        menuItemId: menuItem.id,
+        menuItemName: menuItem.name,
+        quantity: validatedItemData.quantity,
+        unitPrice: menuItem.price,
+        totalPrice: menuItem.price * validatedItemData.quantity, // Tính toán totalPrice ở đây
+        note: validatedItemData.note || null,
       };
 
       const item = await storage.addOrderItem(itemToAdd);
-      
-      const orderItems = await storage.getOrderItems(orderId);
-      const newTotal = orderItems.reduce((sum, currentItem) => sum + currentItem.totalPrice, 0);
-      await storage.updateOrder(orderId, { total: newTotal });
 
       res.status(201).json(item);
     } catch (error) {
@@ -382,25 +389,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid order item ID" });
       }
-      // Validate chỉ các field được phép update
       const updateSchema = z.object({
         quantity: z.number().min(1).optional(),
         note: z.string().optional(),
-        // unitPrice không nên cho update ở đây, nó nên lấy từ menuItem gốc
-      }).partial(); // Partial cho phép không phải tất cả field đều có
+      }).partial();
 
       const validatedUpdates = updateSchema.parse(req.body);
-      const existingItem = await storage.getOrderItem(id); // Cần hàm này trong storage
-      
+      const existingItem = await storage.getOrderItem(id);
+
       if (!existingItem) {
-         return res.status(404).json({ message: "Order item not found" });
+        return res.status(404).json({ message: "Order item not found" });
       }
-      
+
       const finalUpdates: Partial<OrderItemType> = { ...validatedUpdates };
       if (validatedUpdates.quantity !== undefined) {
         finalUpdates.totalPrice = existingItem.unitPrice * validatedUpdates.quantity;
       }
-
 
       const updatedItem = await storage.updateOrderItem(id, finalUpdates);
 
@@ -428,8 +432,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid order item ID" });
       }
-      
-      const deletedItem = await storage.removeOrderItem(id); 
+
+      const deletedItem = await storage.removeOrderItem(id);
 
       if (!deletedItem) {
         return res.status(404).json({ message: "Order item not found" });
@@ -466,7 +470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const dateString = req.query.date as string | undefined;
       const date = dateString ? new Date(dateString) : new Date();
-       if (isNaN(date.getTime())) {
+      if (isNaN(date.getTime())) {
         return res.status(400).json({ message: "Invalid date format" });
       }
       const revenueByTable = await storage.getRevenueByTable(date);
@@ -484,6 +488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Valid Order ID is required" });
       }
 
+      // Lấy order và order items để đồng bộ
       const order = await storage.updateOrder(orderId, {}); // Chỉ để lấy order, không update gì
       if (!order) {
         return res.status(404).json({ message: "Order not found" });

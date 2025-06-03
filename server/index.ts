@@ -43,8 +43,18 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
+    // Log the full error object for debugging
+    console.error("Global error handler caught an error:", err);
+    console.error("Error status:", status);
+    console.error("Error message:", message);
+    // Nếu lỗi có stack, hãy in stack trace ra
+    if (err.stack) {
+        console.error("Error stack:", err.stack);
+    }
+
+    // Send a response but do not re-throw the error
     res.status(status).json({ message });
-    throw err;
+    // Bỏ `throw err;` để tránh ứng dụng bị crash khi có lỗi không mong muốn
   });
 
   // importantly only setup vite in development and after

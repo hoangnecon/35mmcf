@@ -1,5 +1,4 @@
-// client/src/pages/pos.tsx
-import { useState, useEffect, useCallback } from "react"; // Thêm useCallback
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import TableGrid from "@/components/table-grid";
@@ -23,44 +22,39 @@ import type { Table, Order as OrderType, OrderItem as OrderItemType } from "@sha
 
 export default function PosPage() {
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+  const [activeOrder, setActiveOrder] = useState<(OrderType & { items: OrderItemType[] }) | null>(null);
   const [isRevenueOpen, setIsRevenueOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'tables' | 'menu'>('tables');
-  const [orderToPassToMenuPage, setOrderToPassToMenuPage] = useState<OrderType | null | undefined>(undefined);
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: tables = [], isLoading: isLoadingTables } = useQuery<Table[]>({
+  const { data: tables = [] } = useQuery<Table[]>({
     queryKey: ["/api/tables"],
   });
 
-  const {
-    data: activeOrderForPanel,
-    isLoading: isLoadingActiveOrderForPanel,
-    refetch: refetchActiveOrderForPanel, // Lấy hàm refetch
-  } = useQuery<OrderType & { items: OrderItemType[] } | null>({
-    queryKey: ["/api/tables", selectedTableId, "active-order"],
-    enabled: selectedTableId !== null && viewMode === 'tables',
-    staleTime: 1000, // Giữ staleTime thấp để dễ dàng refetch
-    // refetchOnMount: false, // Để useEffect kiểm soát việc refetch khi quay lại view
-    // refetchOnWindowFocus: false,
+  const { data: allOrders = [] } = useQuery<(OrderType & { items: OrderItemType[] })[]>({
+    queryKey: ["/api/orders"],
+    select: (data) => data.filter(order => order.status === 'active'),
   });
 
-  const { data: dailyRevenueData } = useQuery<{revenue: number}>({
+  const { data: dailyRevenueData } = useQuery<{ revenue: number }>({
     queryKey: ["/api/revenue/daily"],
   });
 
-  const createOrderMutation = useMutation<OrderType, Error, any>({
-    mutationFn: async (orderData: any) => {
+  const createOrderMutation = useMutation<OrderType, Error, { tableId: number; tableName: string; status: string; total: number }>({
+    mutationFn: async (orderData) => {
       const response = await apiRequest("POST", "/api/orders", orderData);
-      return response.json();
+      const newOrder = await response.json();
+      if (!newOrder || !newOrder.id) {
+        throw new Error("Order creation failed");
+      }
+      return newOrder;
     },
     onSuccess: (newOrderData) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      if (selectedTableId) {
-        queryClient.setQueryData(["/api/tables", selectedTableId, "active-order"], newOrderData);
-      }
+      queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
       toast({
         title: "Đơn hàng mới",
         description: `Đã tạo đơn hàng mới cho bàn ${newOrderData.tableName}.`,
@@ -81,14 +75,15 @@ export default function PosPage() {
       return response.json();
     },
     onSuccess: (completedOrderData) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/revenue/daily"] });
-      if (selectedTableId) {
-         queryClient.setQueryData(["/api/tables", selectedTableId, "active-order"], null);
+
+      if (selectedTableId === completedOrderData.tableId) {
+        setSelectedTableId(null);
+        setActiveOrder(null);
       }
-      setSelectedTableId(null);
-      setOrderToPassToMenuPage(null);
+
       toast({
         title: "Thanh toán thành công",
         description: `Đã hoàn tất đơn hàng cho bàn ${completedOrderData.tableName}.`,
@@ -105,95 +100,82 @@ export default function PosPage() {
 
   const handleTableSelect = useCallback((tableId: number) => {
     setSelectedTableId(tableId);
-    // queryClient.invalidateQueries({ queryKey: ["/api/tables", tableId, "active-order"] });
-    // Việc invalidate ở đây có thể không cần thiết nếu selectedTableId thay đổi sẽ trigger useQuery
-  }, [queryClient]);
+  }, []);
 
   useEffect(() => {
-    if (viewMode === 'tables' && selectedTableId !== null) {
-      console.log(`PosPage: View is 'tables' and selectedTableId is ${selectedTableId}. Refetching active order.`);
-      refetchActiveOrderForPanel();
+    if (selectedTableId) {
+      const found = allOrders.find(order => order.tableId === selectedTableId && order.status === "active");
+      setActiveOrder(found || null);
     }
-  }, [viewMode, selectedTableId, refetchActiveOrderForPanel]);
+  }, [selectedTableId, allOrders]);
 
   const handleOpenMenuPage = async () => {
-    let orderForMenu: OrderType | null = null;
-
     if (!selectedTableId) {
-      setOrderToPassToMenuPage(null);
-      setViewMode('menu');
+      toast({
+        title: "Chưa chọn bàn",
+        description: "Vui lòng chọn bàn trước khi xem thực đơn.",
+        variant: "destructive"
+      });
       return;
     }
 
     const table = tables.find((t) => t.id === selectedTableId);
     if (!table) {
-      toast({ title: "Lỗi bàn", description: "Không tìm thấy thông tin bàn đã chọn.", variant: "destructive" });
+      toast({
+        title: "Lỗi bàn",
+        description: "Không tìm thấy thông tin bàn đã chọn.",
+        variant: "destructive"
+      });
       return;
     }
 
-    // Luôn cố gắng fetch lại để có dữ liệu mới nhất trước khi sang MenuPage,
-    // trừ khi cache được coi là rất mới.
-    // Hoặc có thể luôn invalidate trước khi fetch.
-    // queryClient.invalidateQueries({ queryKey: ["/api/tables", table.id, "active-order"]});
-    
-    try {
-      const response = await apiRequest("GET", `/api/tables/${table.id}/active-order`);
-      const existingOrder = await response.json();
-      if (existingOrder && existingOrder.id) {
-        orderForMenu = existingOrder;
-        queryClient.setQueryData(["/api/tables", table.id, "active-order"], existingOrder);
-      } else {
-        console.log(`PosPage: No active order for table ${table.id}, creating new one.`);
-        orderForMenu = await createOrderMutation.mutateAsync({
+    let currentOrder = activeOrder;
+
+    if (!currentOrder) {
+      try {
+        const newOrder = await createOrderMutation.mutateAsync({
           tableId: table.id,
           tableName: table.name,
           status: "active",
           total: 0,
         });
-      }
-    } catch (error: any) {
-      if (error.message && error.message.includes("404")) {
-        try {
-          console.log(`PosPage: API 404 for active order (table ${table.id}), creating new one.`);
-          orderForMenu = await createOrderMutation.mutateAsync({
-            tableId: table.id,
-            tableName: table.name,
-            status: "active",
-            total: 0,
-          });
-        } catch (createError) {
-          console.error("Error creating new order after API 404:", createError);
-          toast({ title: "Lỗi tạo đơn", description: "Không thể tạo đơn hàng mới cho bàn này.", variant: "destructive" });
-          return;
-        }
-      } else {
-        console.error("Error fetching/creating active order for menu:", error);
-        toast({ title: "Lỗi tải/tạo đơn hàng", description: "Không thể chuẩn bị đơn hàng để vào thực đơn.", variant: "destructive" });
+        setActiveOrder(newOrder);
+        currentOrder = newOrder;
+      } catch (error) {
         return;
       }
     }
-    
-    console.log("PosPage: Passing to MenuPage:", { tableId: selectedTableId, order: orderForMenu });
-    setOrderToPassToMenuPage(orderForMenu);
+
+    if (!currentOrder || !currentOrder.id) {
+      toast({
+        title: "Lỗi đơn hàng",
+        description: "Không thể chuẩn bị đơn hàng.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setViewMode('menu');
   };
 
   const handleGoBackToTables = useCallback(() => {
     setViewMode('tables');
-    // Không reset selectedTableId để OrderPanel có thể refetch đúng bàn
-    // orderToPassToMenuPage sẽ tự động không được dùng vì viewMode thay đổi
-    // setOrderToPassToMenuPage(undefined); // Không cần thiết nếu MenuPage không render khi viewMode là tables
-  }, [setViewMode]);
+    queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+  }, [queryClient]);
 
   const handleCheckout = async () => {
-    if (!activeOrderForPanel || !activeOrderForPanel.id) {
-      toast({ title: "Lỗi", description: "Không có đơn hàng nào để thanh toán.", variant: "destructive" });
+    if (!activeOrder || !activeOrder.id) {
+      toast({
+        title: "Lỗi",
+        description: "Không có đơn hàng nào để thanh toán.",
+        variant: "destructive"
+      });
       return;
-    };
-    await completeOrderMutation.mutateAsync(activeOrderForPanel.id);
+    }
+    await completeOrderMutation.mutateAsync(activeOrder.id);
   };
 
-  const dailyRevenue = dailyRevenueData?.revenue || 0;
+  const dailyRevenue = dailyRevenueData?.revenue ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -210,9 +192,9 @@ export default function PosPage() {
                 size="sm"
                 className="bg-white bg-opacity-20 hover:bg-opacity-30"
                 onClick={handleGoBackToTables}
+                disabled={viewMode === 'tables'}
               >
-                <TableIcon className="h-4 w-4 mr-2" />
-                Phòng bàn
+                <TableIcon className="h-4 w-4 mr-2" /> Phòng bàn
               </Button>
               <Button
                 variant="ghost"
@@ -221,8 +203,7 @@ export default function PosPage() {
                 onClick={handleOpenMenuPage}
                 disabled={viewMode === 'menu'}
               >
-                <ShoppingCart className="h-4 w-4 mr-2" />
-                Thực đơn
+                <ShoppingCart className="h-4 w-4 mr-2" /> Thực đơn
               </Button>
             </nav>
           </div>
@@ -256,7 +237,7 @@ export default function PosPage() {
             <div className="w-96 bg-white border-l border-gray-200 shrink-0">
               <OrderPanel
                 selectedTable={selectedTableId ? tables.find(t => t.id === selectedTableId) : null}
-                activeOrder={activeOrderForPanel}
+                activeOrder={activeOrder}
                 onOpenMenu={handleOpenMenuPage}
                 onCheckout={handleCheckout}
                 isCheckingOut={completeOrderMutation.isPending}
@@ -264,13 +245,11 @@ export default function PosPage() {
             </div>
           </>
         ) : (
-          orderToPassToMenuPage !== undefined && (
-            <MenuPage
-              tableId={selectedTableId}
-              initialOrder={orderToPassToMenuPage}
-              onGoBack={handleGoBackToTables}
-            />
-          )
+          <MenuPage
+            tableId={selectedTableId}
+            initialOrder={activeOrder}
+            onGoBack={handleGoBackToTables}
+          />
         )}
       </div>
 
@@ -293,8 +272,7 @@ export default function PosPage() {
             className="bg-white bg-opacity-20 hover:bg-opacity-30"
             onClick={() => setIsRevenueOpen(true)}
           >
-            <TrendingUp className="h-4 w-4 mr-1" />
-            Báo cáo
+            <TrendingUp className="h-4 w-4 mr-1" /> Báo cáo
           </Button>
         </div>
       </div>

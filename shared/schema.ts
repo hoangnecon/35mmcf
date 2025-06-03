@@ -1,6 +1,6 @@
 // shared/schema.ts
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"; // Removed timestamp
-import { createInsertSchema } from "drizzle-zod";
+import { sqliteTable, text, integer, primaryKey } from "drizzle-orm/sqlite-core"; // Removed timestamp
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 import { sql } from "drizzle-orm"; // Import sql helper
 
@@ -16,7 +16,7 @@ export const menuCollections = sqliteTable("menu_collections", {
   name: text("name").notNull().unique(), // e.g., "Main Menu", "Tet Holiday Menu"
   description: text("description"),
   isActive: integer("is_active").notNull().default(1), // 1 = active, 0 = inactive
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), // Changed to text and used sql helper
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const menuItems = sqliteTable("menu_items", {
@@ -26,7 +26,7 @@ export const menuItems = sqliteTable("menu_items", {
   category: text("category").notNull(),
   imageUrl: text("image_url"),
   available: integer("available").notNull().default(1), // 1 = true, 0 = false
-  menuCollectionId: integer("menu_collection_id").references(() => menuCollections.id).notNull().default(1), // Default to a 'main' collection
+  menuCollectionId: integer("menu_collection_id").references(() => menuCollections.id).notNull().default(1),
 });
 
 export const orders = sqliteTable("orders", {
@@ -35,14 +35,15 @@ export const orders = sqliteTable("orders", {
   tableName: text("table_name").notNull(),
   status: text("status").notNull().default("active"), // 'active', 'completed', 'cancelled'
   total: integer("total").notNull().default(0),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), // Changed to text and used sql helper
-  completedAt: text("completed_at"), // Changed to text
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  completedAt: text("completed_at"),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`), // <-- ĐÃ THÊM VÀ ĐẶT DEFAULT
 });
 
 export const orderItems = sqliteTable("order_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  orderId: integer("order_id").notNull(),
-  menuItemId: integer("menu_item_id").notNull(),
+  orderId: integer("order_id").notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  menuItemId: integer("menu_item_id").notNull().references(() => menuItems.id),
   menuItemName: text("menu_item_name").notNull(),
   quantity: integer("quantity").notNull().default(1),
   unitPrice: integer("unit_price").notNull(),
@@ -53,54 +54,36 @@ export const orderItems = sqliteTable("order_items", {
 export const googleSheetsSync = sqliteTable("google_sheets_sync", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   orderId: integer("order_id").notNull(),
-  syncedAt: text("synced_at").notNull().default(sql`CURRENT_TIMESTAMP`), // Changed to text and used sql helper
+  syncedAt: text("synced_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   sheetRowId: text("sheet_row_id"),
 });
 
-// Zod Schemas (no changes needed here, as they depend on the Drizzle table definitions)
-export const insertTableSchema = createInsertSchema(tables).omit({
-  id: true,
-});
+// Zod Schemas
+export const insertTableSchema = createInsertSchema(tables).omit({ id: true });
+export const insertMenuCollectionSchema = createInsertSchema(menuCollections).omit({ id: true, createdAt: true });
+export const insertMenuItemSchema = createInsertSchema(menuItems).omit({ id: true });
 
-export const insertMenuCollectionSchema = createInsertSchema(menuCollections).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertMenuItemSchema = createInsertSchema(menuItems).omit({
-  id: true,
-});
-
+// Cập nhật insertOrderSchema để Drizzle tự quản lý `createdAt` và `updatedAt` khi insert
 export const insertOrderSchema = createInsertSchema(orders).omit({
   id: true,
-  createdAt: true,
+  createdAt: true, // Để DB tự tạo
   completedAt: true,
+  updatedAt: true, // Để DB tự tạo khi insert
 });
 
-export const insertOrderItemSchema = createInsertSchema(orderItems).omit({
-  id: true,
-});
+export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });
+export const insertGoogleSheetsSyncSchema = createInsertSchema(googleSheetsSync).omit({ id: true, syncedAt: true });
 
-export const insertGoogleSheetsSyncSchema = createInsertSchema(googleSheetsSync).omit({
-  id: true,
-  syncedAt: true,
-});
-
-// Types (no changes needed here, as they depend on the Drizzle table definitions)
+// Types
 export type Table = typeof tables.$inferSelect;
 export type InsertTable = z.infer<typeof insertTableSchema>;
-
 export type MenuCollection = typeof menuCollections.$inferSelect;
 export type InsertMenuCollection = z.infer<typeof insertMenuCollectionSchema>;
-
 export type MenuItem = typeof menuItems.$inferSelect;
 export type InsertMenuItem = z.infer<typeof insertMenuItemSchema>;
-
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
-
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
-
 export type GoogleSheetsSync = typeof googleSheetsSync.$inferSelect;
 export type InsertGoogleSheetsSync = z.infer<typeof insertGoogleSheetsSyncSchema>;
