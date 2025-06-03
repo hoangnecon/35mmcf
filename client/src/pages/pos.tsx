@@ -1,67 +1,66 @@
 // client/src/pages/pos.tsx
-import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect, useCallback } from "react"; // Thêm useCallback
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import TableGrid from "@/components/table-grid";
 import OrderPanel from "@/components/order-panel";
 import RevenueModal from "@/components/revenue-modal";
 import AdminPanel from "@/components/admin-panel";
-import MenuPage from "@/pages/menu-page"; // Import MenuPage as a component
+import MenuPage from "@/pages/menu-page";
 import { Button } from "@/components/ui/button";
 import { formatVND } from "@/lib/utils";
 import {
   Utensils,
   ShoppingCart,
-  BarChart3,
   Settings,
   Phone,
   MessageCircle,
-  TrendingUp
+  TrendingUp,
+  Table as TableIcon,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast"; // Import useToast
+import { useToast } from "@/hooks/use-toast";
+import type { Table, Order as OrderType, OrderItem as OrderItemType } from "@shared/schema";
 
 export default function PosPage() {
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [isRevenueOpen, setIsRevenueOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'tables' | 'menu'>('tables'); // State to control view mode
-  const [orderToPassToMenuPage, setOrderToPassToMenuPage] = useState<any>(null); // State to pass order to MenuPage
+  const [viewMode, setViewMode] = useState<'tables' | 'menu'>('tables');
+  const [orderToPassToMenuPage, setOrderToPassToMenuPage] = useState<OrderType | null | undefined>(undefined);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Fetch tables
-  const { data: tables = [], isLoading: isLoadingTables } = useQuery({ // Added isLoadingTables
+  const { data: tables = [], isLoading: isLoadingTables } = useQuery<Table[]>({
     queryKey: ["/api/tables"],
   });
 
-  // Fetch active order for selected table (used by OrderPanel)
-  const { data: activeOrderForPanel, isLoading: isLoadingActiveOrderForPanel } = useQuery({
+  const {
+    data: activeOrderForPanel,
+    isLoading: isLoadingActiveOrderForPanel,
+    refetch: refetchActiveOrderForPanel, // Lấy hàm refetch
+  } = useQuery<OrderType & { items: OrderItemType[] } | null>({
     queryKey: ["/api/tables", selectedTableId, "active-order"],
-    enabled: selectedTableId !== null && viewMode === 'tables', // Only fetch if viewing tables
-    staleTime: 5 * 1000, // 5 seconds
-    refetchInterval: 10 * 1000, // Refetch every 10 seconds
+    enabled: selectedTableId !== null && viewMode === 'tables',
+    staleTime: 1000, // Giữ staleTime thấp để dễ dàng refetch
+    // refetchOnMount: false, // Để useEffect kiểm soát việc refetch khi quay lại view
+    // refetchOnWindowFocus: false,
   });
 
-  // Fetch daily revenue
-  const { data: dailyRevenueData } = useQuery({
+  const { data: dailyRevenueData } = useQuery<{revenue: number}>({
     queryKey: ["/api/revenue/daily"],
   });
 
-  // Create order mutation (used when a table needs an order to go to menu)
-  const createOrderMutation = useMutation({
+  const createOrderMutation = useMutation<OrderType, Error, any>({
     mutationFn: async (orderData: any) => {
       const response = await apiRequest("POST", "/api/orders", orderData);
       return response.json();
     },
     onSuccess: (newOrderData) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tables"] }); // Update table status
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] }); // Update all orders
-      // Set the order data directly into cache for the current selected table
-      queryClient.setQueryData(["/api/tables", selectedTableId, "active-order"], newOrderData);
-
-      setOrderToPassToMenuPage(newOrderData); // Pass the newly created order
-      setViewMode('menu'); // Switch to menu view after order is created
+      queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      if (selectedTableId) {
+        queryClient.setQueryData(["/api/tables", selectedTableId, "active-order"], newOrderData);
+      }
       toast({
         title: "Đơn hàng mới",
         description: `Đã tạo đơn hàng mới cho bàn ${newOrderData.tableName}.`,
@@ -76,21 +75,20 @@ export default function PosPage() {
     }
   });
 
-  // Complete order mutation
-  const completeOrderMutation = useMutation({
+  const completeOrderMutation = useMutation<OrderType, Error, number>({
     mutationFn: async (orderId: number) => {
       const response = await apiRequest("PUT", `/api/orders/${orderId}/complete`);
       return response.json();
     },
     onSuccess: (completedOrderData) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tables"] }); // Update table status (e.g., from occupied to available)
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] }); // Update orders list
-      queryClient.invalidateQueries({ queryKey: ["/api/revenue/daily"] }); // Update revenue
-      // Remove the completed order from cache
-      queryClient.setQueryData(["/api/tables", selectedTableId, "active-order"], undefined);
-      
-      setSelectedTableId(null); // Deselect table after checkout
-      setOrderToPassToMenuPage(null); // Clear order data for menu page
+      queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/revenue/daily"] });
+      if (selectedTableId) {
+         queryClient.setQueryData(["/api/tables", selectedTableId, "active-order"], null);
+      }
+      setSelectedTableId(null);
+      setOrderToPassToMenuPage(null);
       toast({
         title: "Thanh toán thành công",
         description: `Đã hoàn tất đơn hàng cho bàn ${completedOrderData.tableName}.`,
@@ -105,105 +103,100 @@ export default function PosPage() {
     }
   });
 
-  const selectedTable = tables.find((table: any) => table.id === selectedTableId);
-
-  // handleTableSelect: Only selects table, updates OrderPanel. DOES NOT switch to menu.
-  const handleTableSelect = async (tableId: number) => {
+  const handleTableSelect = useCallback((tableId: number) => {
     setSelectedTableId(tableId);
-    // Invalidate and refetch active order for OrderPanel to update immediately
-    // This will cause activeOrderForPanel query to refetch if viewMode is 'tables'
-    queryClient.invalidateQueries({ queryKey: ["/api/tables", tableId, "active-order"] });
-  };
+    // queryClient.invalidateQueries({ queryKey: ["/api/tables", tableId, "active-order"] });
+    // Việc invalidate ở đây có thể không cần thiết nếu selectedTableId thay đổi sẽ trigger useQuery
+  }, [queryClient]);
 
-  // handleOpenMenuPage: Explicitly switches to menu view AFTER ensuring an active order.
+  useEffect(() => {
+    if (viewMode === 'tables' && selectedTableId !== null) {
+      console.log(`PosPage: View is 'tables' and selectedTableId is ${selectedTableId}. Refetching active order.`);
+      refetchActiveOrderForPanel();
+    }
+  }, [viewMode, selectedTableId, refetchActiveOrderForPanel]);
+
   const handleOpenMenuPage = async () => {
-    // If no table is selected, toast and return
+    let orderForMenu: OrderType | null = null;
+
     if (!selectedTableId) {
-      toast({
-        title: "Vui lòng chọn bàn",
-        description: "Bạn cần chọn một bàn trước khi vào thực đơn.",
-        variant: "default",
-      });
-      return;
-    }
-
-    const table = tables.find((t: any) => t.id === selectedTableId);
-    if (!table) {
-      toast({
-        title: "Lỗi bàn",
-        description: "Không tìm thấy thông tin bàn đã chọn.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Try to get active order from cache first for immediate pass
-    const cachedActiveOrder = queryClient.getQueryData(["/api/tables", table.id, "active-order"]);
-
-    if (cachedActiveOrder) {
-      // If active order exists in cache, use it immediately
-      setOrderToPassToMenuPage(cachedActiveOrder);
+      setOrderToPassToMenuPage(null);
       setViewMode('menu');
-    } else {
-      // If not in cache, fetch it. If it doesn't exist, create it.
-      // This will set the order and switch viewMode in createOrderMutation.onSuccess
-      // or setOrderToPassToMenuPage and setViewMode if fetched directly
-      try {
-        const response = await apiRequest("GET", `/api/tables/${table.id}/active-order`);
-        const existingOrder = await response.json();
+      return;
+    }
 
-        if (existingOrder) {
-          setOrderToPassToMenuPage(existingOrder);
-          setViewMode('menu');
-        } else {
-          // No existing order, so create one. createOrderMutation.onSuccess will handle view switch.
-          await createOrderMutation.mutateAsync({
+    const table = tables.find((t) => t.id === selectedTableId);
+    if (!table) {
+      toast({ title: "Lỗi bàn", description: "Không tìm thấy thông tin bàn đã chọn.", variant: "destructive" });
+      return;
+    }
+
+    // Luôn cố gắng fetch lại để có dữ liệu mới nhất trước khi sang MenuPage,
+    // trừ khi cache được coi là rất mới.
+    // Hoặc có thể luôn invalidate trước khi fetch.
+    // queryClient.invalidateQueries({ queryKey: ["/api/tables", table.id, "active-order"]});
+    
+    try {
+      const response = await apiRequest("GET", `/api/tables/${table.id}/active-order`);
+      const existingOrder = await response.json();
+      if (existingOrder && existingOrder.id) {
+        orderForMenu = existingOrder;
+        queryClient.setQueryData(["/api/tables", table.id, "active-order"], existingOrder);
+      } else {
+        console.log(`PosPage: No active order for table ${table.id}, creating new one.`);
+        orderForMenu = await createOrderMutation.mutateAsync({
+          tableId: table.id,
+          tableName: table.name,
+          status: "active",
+          total: 0,
+        });
+      }
+    } catch (error: any) {
+      if (error.message && error.message.includes("404")) {
+        try {
+          console.log(`PosPage: API 404 for active order (table ${table.id}), creating new one.`);
+          orderForMenu = await createOrderMutation.mutateAsync({
             tableId: table.id,
             tableName: table.name,
             status: "active",
             total: 0,
           });
+        } catch (createError) {
+          console.error("Error creating new order after API 404:", createError);
+          toast({ title: "Lỗi tạo đơn", description: "Không thể tạo đơn hàng mới cho bàn này.", variant: "destructive" });
+          return;
         }
-      } catch (error) {
-        console.error("Error preparing order for menu page:", error);
-        toast({
-          title: "Lỗi",
-          description: "Không thể tải hoặc tạo đơn hàng để vào thực đơn.",
-          variant: "destructive",
-        });
+      } else {
+        console.error("Error fetching/creating active order for menu:", error);
+        toast({ title: "Lỗi tải/tạo đơn hàng", description: "Không thể chuẩn bị đơn hàng để vào thực đơn.", variant: "destructive" });
+        return;
       }
     }
+    
+    console.log("PosPage: Passing to MenuPage:", { tableId: selectedTableId, order: orderForMenu });
+    setOrderToPassToMenuPage(orderForMenu);
+    setViewMode('menu');
   };
 
-  // Callback from MenuPage to go back to table view
-  const handleGoBackToTables = () => {
-    setSelectedTableId(null); // Deselect table when going back
-    setOrderToPassToMenuPage(null); // Clear order when going back
+  const handleGoBackToTables = useCallback(() => {
     setViewMode('tables');
-  };
+    // Không reset selectedTableId để OrderPanel có thể refetch đúng bàn
+    // orderToPassToMenuPage sẽ tự động không được dùng vì viewMode thay đổi
+    // setOrderToPassToMenuPage(undefined); // Không cần thiết nếu MenuPage không render khi viewMode là tables
+  }, [setViewMode]);
 
   const handleCheckout = async () => {
     if (!activeOrderForPanel || !activeOrderForPanel.id) {
-      toast({
-        title: "Lỗi",
-        description: "Không có đơn hàng nào để thanh toán.",
-        variant: "destructive",
-      });
+      toast({ title: "Lỗi", description: "Không có đơn hàng nào để thanh toán.", variant: "destructive" });
       return;
     };
-
-    try {
-      await completeOrderMutation.mutateAsync(activeOrderForPanel.id);
-    } catch (error) {
-      console.error("Error completing order:", error);
-    }
+    await completeOrderMutation.mutateAsync(activeOrderForPanel.id);
   };
 
   const dailyRevenue = dailyRevenueData?.revenue || 0;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
       <header className="bg-primary text-primary-foreground p-4 shadow-lg">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -216,18 +209,17 @@ export default function PosPage() {
                 variant="secondary"
                 size="sm"
                 className="bg-white bg-opacity-20 hover:bg-opacity-30"
-                onClick={handleGoBackToTables} // Button to switch to table view
-                disabled={viewMode === 'tables'}
+                onClick={handleGoBackToTables}
               >
-                <Utensils className="h-4 w-4 mr-2" />
+                <TableIcon className="h-4 w-4 mr-2" />
                 Phòng bàn
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 className="text-white hover:bg-white hover:bg-opacity-10"
-                onClick={handleOpenMenuPage} // Button to switch to menu view
-                disabled={viewMode === 'menu'} // Disable if already in menu view
+                onClick={handleOpenMenuPage}
+                disabled={viewMode === 'menu'}
               >
                 <ShoppingCart className="h-4 w-4 mr-2" />
                 Thực đơn
@@ -251,11 +243,9 @@ export default function PosPage() {
         </div>
       </header>
 
-      {/* Main Content Area: Conditional Rendering */}
-      <div className="flex h-[calc(100vh-140px)] overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
         {viewMode === 'tables' ? (
           <>
-            {/* Table Grid */}
             <div className="flex-1 p-6 overflow-y-auto">
               <TableGrid
                 tables={tables}
@@ -263,28 +253,27 @@ export default function PosPage() {
                 onTableSelect={handleTableSelect}
               />
             </div>
-
-            {/* Order Panel */}
-            <div className="w-96 bg-white border-l border-gray-200">
+            <div className="w-96 bg-white border-l border-gray-200 shrink-0">
               <OrderPanel
                 selectedTable={selectedTableId ? tables.find(t => t.id === selectedTableId) : null}
                 activeOrder={activeOrderForPanel}
-                onOpenMenu={handleOpenMenuPage} // Now a button to switch to menu view
+                onOpenMenu={handleOpenMenuPage}
                 onCheckout={handleCheckout}
                 isCheckingOut={completeOrderMutation.isPending}
               />
             </div>
           </>
         ) : (
-          <MenuPage
-            tableId={selectedTableId}
-            initialOrder={orderToPassToMenuPage} // Pass the order object directly
-            onGoBack={handleGoBackToTables} // Pass callback to go back
-          />
+          orderToPassToMenuPage !== undefined && (
+            <MenuPage
+              tableId={selectedTableId}
+              initialOrder={orderToPassToMenuPage}
+              onGoBack={handleGoBackToTables}
+            />
+          )
         )}
       </div>
 
-      {/* Footer Status Bar */}
       <div className="bg-primary text-primary-foreground px-4 py-2 flex items-center justify-between text-sm">
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
@@ -310,17 +299,8 @@ export default function PosPage() {
         </div>
       </div>
 
-      {/* Revenue Modal */}
-      <RevenueModal
-        isOpen={isRevenueOpen}
-        onClose={() => setIsRevenueOpen(false)}
-      />
-
-      {/* Admin Panel */}
-      <AdminPanel
-        isOpen={isAdminOpen}
-        onClose={() => setIsAdminOpen(false)}
-      />
+      <RevenueModal isOpen={isRevenueOpen} onClose={() => setIsRevenueOpen(false)} />
+      <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
     </div>
   );
 }

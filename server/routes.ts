@@ -2,8 +2,90 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertOrderSchema, insertOrderItemSchema, insertTableSchema, insertMenuItemSchema, insertMenuCollectionSchema } from "@shared/schema"; // Added insertMenuCollectionSchema
+import { 
+  insertOrderSchema, 
+  insertOrderItemSchema, 
+  insertTableSchema, 
+  insertMenuItemSchema, 
+  insertMenuCollectionSchema,
+  type Order as OrderType, // Thêm type Order để sử dụng cho sync
+  type OrderItem as OrderItemType // Thêm type OrderItem
+} from "@shared/schema";
 import { z } from "zod";
+
+// Google Sheets sync function (đặt ở đây hoặc import từ file riêng nếu bạn muốn)
+async function syncOrderToGoogleSheets(order: OrderType, orderItems: OrderItemType[]) {
+  const { GoogleAuth } = require('google-auth-library');
+  const { google } = require('googleapis');
+
+  try {
+    const credentialsEnv = process.env.GOOGLE_SHEETS_CREDENTIALS;
+    if (!credentialsEnv) {
+      console.warn("GOOGLE_SHEETS_CREDENTIALS not set. Skipping Google Sheets sync.");
+      return;
+    }
+    
+    let credentials;
+    try {
+      credentials = JSON.parse(credentialsEnv);
+    } catch (e) {
+      console.error("Failed to parse GOOGLE_SHEETS_CREDENTIALS. Skipping Google Sheets sync.", e);
+      return;
+    }
+
+    const auth = new GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+
+    const sheets = google.sheets({ version: 'v4', auth });
+    const spreadsheetId = process.env.GOOGLE_SHEETS_ID || process.env.GOOGLE_SPREADSHEET_ID;
+
+    if (!spreadsheetId) {
+      console.warn("Google Sheets ID (GOOGLE_SHEETS_ID or GOOGLE_SPREADSHEET_ID) not configured. Skipping Google Sheets sync.");
+      return;
+    }
+
+    const rows = orderItems.map(item => [
+      order.tableName,
+      item.menuItemName,
+      item.quantity,
+      item.unitPrice,
+      item.totalPrice,
+      order.createdAt, // Giả sử createdAt đã là ISO string hoặc định dạng phù hợp
+    ]);
+
+    if (rows.length === 0) {
+      console.log(`Order ${order.id} has no items to sync.`);
+      // Vẫn ghi lại sync record nếu cần, hoặc bỏ qua
+      await storage.addSyncRecord({
+        orderId: order.id,
+        sheetRowId: `no-items-${Date.now()}`, // Đánh dấu là không có item
+      });
+      return;
+    }
+    
+    const res = await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Sheet1!A:F', // Đảm bảo Sheet1 tồn tại
+      valueInputOption: 'RAW',
+      resource: {
+        values: rows,
+      },
+    });
+
+    await storage.addSyncRecord({
+      orderId: order.id,
+      sheetRowId: res.data.updates?.updatedRange || `${Date.now()}`, // Lấy range hoặc timestamp
+    });
+
+    console.log(`Order ${order.id} synced to Google Sheets`);
+  } catch (error) {
+    console.error("Google Sheets sync error:", error);
+    // Không ném lỗi ra ngoài để không ảnh hưởng đến luồng chính
+  }
+}
+
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Tables
@@ -34,9 +116,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/tables/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      // Kiểm tra xem bàn có order active không trước khi xóa (nếu cần)
+      // const activeOrder = await storage.getActiveOrderByTable(id);
+      // if (activeOrder) {
+      //   return res.status(400).json({ message: "Cannot delete table with an active order." });
+      // }
       const success = await storage.deleteTable(id);
       if (!success) {
-        return res.status(404).json({ message: "Table not found" });
+        return res.status(404).json({ message: "Table not found or could not be deleted" });
       }
       res.json({ success: true });
     } catch (error) {
@@ -50,15 +137,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const { status } = req.body;
       
-      if (!status) {
-        return res.status(400).json({ message: "Status is required" });
+      if (!status || !['available', 'occupied', 'reserved'].includes(status)) {
+        return res.status(400).json({ message: "Invalid status provided" });
       }
 
       const table = await storage.updateTableStatus(id, status);
       if (!table) {
         return res.status(404).json({ message: "Table not found" });
       }
-
       res.json(table);
     } catch (error) {
       console.error("Failed to update table status:", error);
@@ -66,7 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // NEW: Menu Collections
+  // Menu Collections
   app.get("/api/menu-collections", async (req, res) => {
     try {
       const collections = await storage.getMenuCollections();
@@ -94,7 +180,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/menu-collections/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const updates = req.body; // No Zod schema for partial updates directly
+      // Validate partial updates if necessary, or rely on schema for full updates
+      const updates = req.body; 
       const collection = await storage.updateMenuCollection(id, updates);
       if (!collection) {
         return res.status(404).json({ message: "Menu collection not found" });
@@ -120,12 +207,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-
   // Menu Items
   app.get("/api/menu-items", async (req, res) => {
     try {
-      const collectionId = req.query.collectionId ? parseInt(req.query.collectionId as string) : undefined;
-      const menuItems = await storage.getMenuItems(collectionId); // Pass collectionId
+      const collectionId = req.query.collectionId ? parseInt(req.query.collectionId as string) : null; // Chuyển undefined thành null
+      const menuItems = await storage.getMenuItems(collectionId);
       res.json(menuItems);
     } catch (error) {
       console.error("Failed to fetch menu items:", error);
@@ -150,7 +236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/menu-items/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const updates = req.body;
+      const updates = req.body; // Cần validate nếu schema không phải là partial
       const menuItem = await storage.updateMenuItem(id, updates);
       if (!menuItem) {
         return res.status(404).json({ message: "Menu item not found" });
@@ -190,10 +276,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/tables/:tableId/active-order", async (req, res) => {
     try {
       const tableId = parseInt(req.params.tableId);
+      if (isNaN(tableId)) {
+        return res.status(400).json({ message: "Invalid table ID" });
+      }
       const order = await storage.getActiveOrderByTable(tableId);
       
       if (!order) {
-        return res.json(null);
+        return res.json(null); // Trả về null nếu không có active order, client sẽ xử lý
       }
 
       const orderItems = await storage.getOrderItems(order.id);
@@ -232,10 +321,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const orderItems = await storage.getOrderItems(order.id);
         await syncOrderToGoogleSheets(order, orderItems);
       } catch (syncError) {
-        console.error("Failed to sync to Google Sheets:", syncError);
-        // Continue with order completion even if sync fails
+        console.error("Failed to sync to Google Sheets after order completion:", syncError);
+        // Tiếp tục hoàn tất đơn hàng ngay cả khi sync lỗi
       }
-
       res.json(order);
     } catch (error) {
       console.error("Failed to complete order:", error);
@@ -247,6 +335,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/orders/:orderId/items", async (req, res) => {
     try {
       const orderId = parseInt(req.params.orderId);
+      if (isNaN(orderId)) {
+        return res.status(400).json({ message: "Invalid order ID" });
+      }
       const items = await storage.getOrderItems(orderId);
       res.json(items);
     } catch (error) {
@@ -258,16 +349,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/orders/:orderId/items", async (req, res) => {
     try {
       const orderId = parseInt(req.params.orderId);
-      const validatedData = insertOrderItemSchema.parse({
-        ...req.body,
-        orderId,
-      });
-
-      const item = await storage.addOrderItem(validatedData);
+      if (isNaN(orderId)) {
+        return res.status(400).json({ message: "Invalid order ID" });
+      }
+      // Validate data trước khi thêm orderId
+      const validatedItemData = insertOrderItemSchema.omit({ orderId: true, id: true }).parse(req.body);
       
-      // Update order total
+      const itemToAdd = {
+        ...validatedItemData,
+        orderId, // Gán orderId sau khi validate
+      };
+
+      const item = await storage.addOrderItem(itemToAdd);
+      
       const orderItems = await storage.getOrderItems(orderId);
-      const newTotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
+      const newTotal = orderItems.reduce((sum, currentItem) => sum + currentItem.totalPrice, 0);
       await storage.updateOrder(orderId, { total: newTotal });
 
       res.status(201).json(item);
@@ -283,25 +379,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/order-items/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { quantity, note } = req.body;
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid order item ID" });
+      }
+      // Validate chỉ các field được phép update
+      const updateSchema = z.object({
+        quantity: z.number().min(1).optional(),
+        note: z.string().optional(),
+        // unitPrice không nên cho update ở đây, nó nên lấy từ menuItem gốc
+      }).partial(); // Partial cho phép không phải tất cả field đều có
 
-      const existingItem = await storage.updateOrderItem(id, {
-        quantity,
-        totalPrice: req.body.unitPrice * quantity,
-        note,
-      });
-
+      const validatedUpdates = updateSchema.parse(req.body);
+      const existingItem = await storage.getOrderItem(id); // Cần hàm này trong storage
+      
       if (!existingItem) {
-        return res.status(404).json({ message: "Order item not found" });
+         return res.status(404).json({ message: "Order item not found" });
+      }
+      
+      const finalUpdates: Partial<OrderItemType> = { ...validatedUpdates };
+      if (validatedUpdates.quantity !== undefined) {
+        finalUpdates.totalPrice = existingItem.unitPrice * validatedUpdates.quantity;
       }
 
-      // Update order total
-      const orderItems = await storage.getOrderItems(existingItem.orderId);
-      const newTotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
-      await storage.updateOrder(existingItem.orderId, { total: newTotal });
 
-      res.json(existingItem);
+      const updatedItem = await storage.updateOrderItem(id, finalUpdates);
+
+      if (!updatedItem) {
+        return res.status(404).json({ message: "Order item not found or failed to update" });
+      }
+
+      const orderItems = await storage.getOrderItems(updatedItem.orderId);
+      const newTotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
+      await storage.updateOrder(updatedItem.orderId, { total: newTotal });
+
+      res.json(updatedItem);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data for order item", errors: error.errors });
+      }
       console.error("Failed to update order item:", error);
       res.status(500).json({ message: "Failed to update order item" });
     }
@@ -310,33 +425,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/order-items/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      
-      // Get the item first to know which order to update
-      // Fix: Get orderId from item before deleting
-      const orderItemsForDeletion = await storage.getOrderItems(0); // This line is problematic, needs to be fixed to retrieve the specific item
-      const itemToDelete = orderItemsForDeletion.find(item => item.id === id); // This logic needs adjustment
-
-      if (!itemToDelete) { // If itemToDelete is not found by existing logic
-        // Try fetching the item directly if possible
-        const directItem = await storage.updateOrderItem(id, {}); // Pass empty updates to just retrieve the item
-        if (!directItem) {
-          return res.status(404).json({ message: "Order item not found" });
-        }
-        itemToDelete = directItem;
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid order item ID" });
       }
       
-      const success = await storage.removeOrderItem(id);
-      if (!success) {
+      const deletedItem = await storage.removeOrderItem(id); 
+
+      if (!deletedItem) {
         return res.status(404).json({ message: "Order item not found" });
       }
 
-      // Update order total
-      // Ensure orderId is valid from itemToDelete
-      const remainingItems = await storage.getOrderItems(itemToDelete.orderId);
+      const remainingItems = await storage.getOrderItems(deletedItem.orderId);
       const newTotal = remainingItems.reduce((sum, item) => sum + item.totalPrice, 0);
-      await storage.updateOrder(itemToDelete.orderId, { total: newTotal });
+      await storage.updateOrder(deletedItem.orderId, { total: newTotal });
 
-      res.json({ success: true });
+      res.json({ success: true, message: "Order item removed successfully" });
     } catch (error) {
       console.error("Failed to remove order item:", error);
       res.status(500).json({ message: "Failed to remove order item" });
@@ -346,7 +449,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Revenue
   app.get("/api/revenue/daily", async (req, res) => {
     try {
-      const date = req.query.date ? new Date(req.query.date as string) : new Date();
+      const dateString = req.query.date as string | undefined;
+      const date = dateString ? new Date(dateString) : new Date();
+      if (isNaN(date.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
       const revenue = await storage.getDailyRevenue(date);
       res.json({ revenue });
     } catch (error) {
@@ -357,7 +464,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/revenue/by-table", async (req, res) => {
     try {
-      const date = req.query.date ? new Date(req.query.date as string) : new Date();
+      const dateString = req.query.date as string | undefined;
+      const date = dateString ? new Date(dateString) : new Date();
+       if (isNaN(date.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
       const revenueByTable = await storage.getRevenueByTable(date);
       res.json(revenueByTable);
     } catch (error) {
@@ -366,16 +477,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Google Sheets sync endpoint
   app.post("/api/sync-to-sheets", async (req, res) => {
     try {
       const { orderId } = req.body;
-      
-      if (!orderId) {
-        return res.status(400).json({ message: "Order ID is required" });
+      if (!orderId || typeof orderId !== 'number') {
+        return res.status(400).json({ message: "Valid Order ID is required" });
       }
 
-      const order = await storage.updateOrder(orderId, {}); // Get current order details
+      const order = await storage.updateOrder(orderId, {}); // Chỉ để lấy order, không update gì
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
@@ -392,57 +501,4 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
   return httpServer;
-}
-
-// Google Sheets sync function
-async function syncOrderToGoogleSheets(order: any, orderItems: any[]) {
-  const { GoogleAuth } = require('google-auth-library');
-  const { google } = require('googleapis');
-
-  try {
-    // Initialize Google Sheets API
-    const auth = new GoogleAuth({
-      credentials: process.env.GOOGLE_SHEETS_CREDENTIALS ? JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS) : undefined,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    const sheets = google.sheets({ version: 'v4', auth });
-    const spreadsheetId = process.env.GOOGLE_SHEETS_ID || process.env.GOOGLE_SPREADSHEET_ID;
-
-    if (!spreadsheetId) {
-      throw new Error("Google Sheets ID not configured");
-    }
-
-    // Prepare data for Google Sheets
-    // Note: SQLite dates are TEXT, so no need for .toLocaleString() if already ISO string
-    const rows = orderItems.map(item => [
-      order.tableName,
-      item.menuItemName,
-      item.quantity,
-      item.unitPrice,
-      item.totalPrice,
-      order.createdAt, // createdAt is now ISO string from SQLite TEXT
-    ]);
-
-    // Append to Google Sheets
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: 'Sheet1!A:F',
-      valueInputOption: 'RAW',
-      resource: {
-        values: rows,
-      },
-    });
-
-    // Record sync
-    await storage.addSyncRecord({
-      orderId: order.id,
-      sheetRowId: `${Date.now()}`,
-    });
-
-    console.log(`Order ${order.id} synced to Google Sheets`);
-  } catch (error) {
-    console.error("Google Sheets sync error:", error);
-    throw error;
-  }
 }
