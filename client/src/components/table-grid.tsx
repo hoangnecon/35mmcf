@@ -1,5 +1,6 @@
 import { Table, Crown, ShoppingBag, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import TableManagementMenu from "@/components/table-management-menu";
 
 interface TableGridProps {
   tables: any[];
@@ -27,7 +28,7 @@ export default function TableGrid({ tables, selectedTableId, onTableSelect }: Ta
     <div>
       {/* Table Categories */}
       <div className="mb-6">
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4 items-center">
           <Button className="bg-primary text-primary-foreground">
             <Table className="h-4 w-4 mr-2" />
             Tất cả (34)
@@ -38,6 +39,7 @@ export default function TableGrid({ tables, selectedTableId, onTableSelect }: Ta
           <Button variant="secondary" className="text-gray-700 hover:bg-gray-300">
             Còn trống (32)
           </Button>
+          <TableManagementMenu />
         </div>
       </div>
 

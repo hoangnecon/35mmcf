@@ -92,9 +92,9 @@ export default function PosPage() {
     if (table) {
       try {
         const response = await fetch(`/api/tables/${tableId}/active-order`);
-        const activeOrder = await response.json();
+        const existingOrder = await response.json();
         
-        if (!activeOrder) {
+        if (!existingOrder) {
           // Create new order for this table
           await createOrderMutation.mutateAsync({
             tableId: table.id,
@@ -110,7 +110,10 @@ export default function PosPage() {
   };
 
   const handleAddMenuItem = async (menuItem: any) => {
-    if (!activeOrder) return;
+    if (!activeOrder || !activeOrder.id) {
+      console.error("No active order available");
+      return;
+    }
 
     const orderItem = {
       menuItemId: menuItem.id,
