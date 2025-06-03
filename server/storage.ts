@@ -230,6 +230,23 @@ export class MemStorage implements IStorage {
     return this.orderItems.delete(id);
   }
 
+  async updateMenuItem(id: number, updates: Partial<MenuItem>): Promise<MenuItem | undefined> {
+    const existing = this.menuItems.get(id);
+    if (!existing) return undefined;
+    
+    const updated = { ...existing, ...updates };
+    this.menuItems.set(id, updated);
+    return updated;
+  }
+
+  async deleteMenuItem(id: number): Promise<boolean> {
+    return this.menuItems.delete(id);
+  }
+
+  async deleteTable(id: number): Promise<boolean> {
+    return this.tables.delete(id);
+  }
+
   async addSyncRecord(sync: InsertGoogleSheetsSync): Promise<GoogleSheetsSync> {
     const newSync: GoogleSheetsSync = {
       ...sync,
