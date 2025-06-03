@@ -5,6 +5,7 @@ import TableGrid from "@/components/table-grid";
 import OrderPanel from "@/components/order-panel";
 import MenuModal from "@/components/menu-modal";
 import RevenueModal from "@/components/revenue-modal";
+import AdminPanel from "@/components/admin-panel";
 import { Button } from "@/components/ui/button";
 import { formatVND } from "@/lib/utils";
 import { 
@@ -21,6 +22,7 @@ export default function PosPage() {
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRevenueOpen, setIsRevenueOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch tables
@@ -174,7 +176,12 @@ export default function PosPage() {
               <div className="opacity-90">Admin</div>
               <div className="opacity-75 text-xs">Phiên bàn 2.6.1</div>
             </div>
-            <Button variant="ghost" size="sm" className="bg-white bg-opacity-20 hover:bg-opacity-30">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="bg-white bg-opacity-20 hover:bg-opacity-30"
+              onClick={() => setIsAdminOpen(true)}
+            >
               <Settings className="h-4 w-4" />
             </Button>
           </div>
@@ -241,6 +248,13 @@ export default function PosPage() {
       <RevenueModal
         isOpen={isRevenueOpen}
         onClose={() => setIsRevenueOpen(false)}
+      />
+
+      {/* Admin Panel */}
+      <AdminPanel
+        isOpen={isAdminOpen}
+        onClose={() => setIsAdminOpen(false)}
+        menuItems={menuItems}
       />
     </div>
   );

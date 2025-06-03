@@ -39,7 +39,7 @@ export default function TableGrid({ tables, selectedTableId, onTableSelect }: Ta
           <Button variant="secondary" className="text-gray-700 hover:bg-gray-300">
             Còn trống (32)
           </Button>
-          <TableManagementMenu />
+          <TableManagementMenu tables={tables} />
         </div>
       </div>
 
