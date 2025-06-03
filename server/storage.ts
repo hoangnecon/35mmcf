@@ -15,6 +15,8 @@ import {
   type GoogleSheetsSync,
   type InsertGoogleSheetsSync,
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, and } from "drizzle-orm";
 
 export interface IStorage {
   // Tables
@@ -288,4 +290,195 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DatabaseStorage implements IStorage {
+  async getTables(): Promise<Table[]> {
+    return await db.select().from(tables);
+  }
+
+  async getTable(id: number): Promise<Table | undefined> {
+    const [table] = await db.select().from(tables).where(eq(tables.id, id));
+    return table || undefined;
+  }
+
+  async createTable(table: InsertTable): Promise<Table> {
+    const [newTable] = await db
+      .insert(tables)
+      .values(table)
+      .returning();
+    return newTable;
+  }
+
+  async updateTableStatus(id: number, status: string): Promise<Table | undefined> {
+    const [updatedTable] = await db
+      .update(tables)
+      .set({ status })
+      .where(eq(tables.id, id))
+      .returning();
+    return updatedTable || undefined;
+  }
+
+  async getMenuItems(): Promise<MenuItem[]> {
+    return await db.select().from(menuItems);
+  }
+
+  async getMenuItem(id: number): Promise<MenuItem | undefined> {
+    const [item] = await db.select().from(menuItems).where(eq(menuItems.id, id));
+    return item || undefined;
+  }
+
+  async createMenuItem(item: InsertMenuItem): Promise<MenuItem> {
+    const [newItem] = await db
+      .insert(menuItems)
+      .values(item)
+      .returning();
+    return newItem;
+  }
+
+  async getOrders(): Promise<Order[]> {
+    return await db.select().from(orders);
+  }
+
+  async getActiveOrderByTable(tableId: number): Promise<Order | undefined> {
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.tableId, tableId), eq(orders.status, 'active')));
+    return order || undefined;
+  }
+
+  async createOrder(order: InsertOrder): Promise<Order> {
+    const [newOrder] = await db
+      .insert(orders)
+      .values(order)
+      .returning();
+    return newOrder;
+  }
+
+  async updateOrder(id: number, updates: Partial<Order>): Promise<Order | undefined> {
+    const [updatedOrder] = await db
+      .update(orders)
+      .set(updates)
+      .where(eq(orders.id, id))
+      .returning();
+    return updatedOrder || undefined;
+  }
+
+  async completeOrder(id: number): Promise<Order | undefined> {
+    const [completedOrder] = await db
+      .update(orders)
+      .set({ status: 'completed', completedAt: new Date() })
+      .where(eq(orders.id, id))
+      .returning();
+    return completedOrder || undefined;
+  }
+
+  async getOrderItems(orderId: number): Promise<OrderItem[]> {
+    return await db
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId));
+  }
+
+  async addOrderItem(item: InsertOrderItem): Promise<OrderItem> {
+    const [newItem] = await db
+      .insert(orderItems)
+      .values(item)
+      .returning();
+    return newItem;
+  }
+
+  async updateOrderItem(id: number, updates: Partial<OrderItem>): Promise<OrderItem | undefined> {
+    const [updatedItem] = await db
+      .update(orderItems)
+      .set(updates)
+      .where(eq(orderItems.id, id))
+      .returning();
+    return updatedItem || undefined;
+  }
+
+  async removeOrderItem(id: number): Promise<boolean> {
+    const result = await db
+      .delete(orderItems)
+      .where(eq(orderItems.id, id));
+    return result.rowCount > 0;
+  }
+
+  async addSyncRecord(sync: InsertGoogleSheetsSync): Promise<GoogleSheetsSync> {
+    const [newSync] = await db
+      .insert(googleSheetsSync)
+      .values(sync)
+      .returning();
+    return newSync;
+  }
+
+  async getSyncRecord(orderId: number): Promise<GoogleSheetsSync | undefined> {
+    const [sync] = await db
+      .select()
+      .from(googleSheetsSync)
+      .where(eq(googleSheetsSync.orderId, orderId));
+    return sync || undefined;
+  }
+
+  async getDailyRevenue(date?: Date): Promise<number> {
+    const targetDate = date || new Date();
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const completedOrders = await db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.status, 'completed'),
+          // Note: PostgreSQL date filtering would need proper SQL functions
+          // For now, we'll get all completed orders and filter in memory
+        )
+      );
+
+    return completedOrders
+      .filter(order => 
+        order.completedAt &&
+        order.completedAt >= startOfDay &&
+        order.completedAt <= endOfDay
+      )
+      .reduce((total, order) => total + order.total, 0);
+  }
+
+  async getRevenueByTable(date?: Date): Promise<Array<{ tableName: string; orderCount: number; revenue: number }>> {
+    const targetDate = date || new Date();
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const completedOrders = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.status, 'completed'));
+
+    const filteredOrders = completedOrders.filter(order => 
+      order.completedAt &&
+      order.completedAt >= startOfDay &&
+      order.completedAt <= endOfDay
+    );
+
+    const revenueByTable = new Map<string, { orderCount: number; revenue: number }>();
+
+    filteredOrders.forEach(order => {
+      const existing = revenueByTable.get(order.tableName) || { orderCount: 0, revenue: 0 };
+      revenueByTable.set(order.tableName, {
+        orderCount: existing.orderCount + 1,
+        revenue: existing.revenue + order.total,
+      });
+    });
+
+    return Array.from(revenueByTable.entries()).map(([tableName, data]) => ({
+      tableName,
+      ...data,
+    }));
+  }
+}
+
+export const storage = new DatabaseStorage();
