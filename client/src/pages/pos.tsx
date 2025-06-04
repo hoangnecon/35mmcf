@@ -39,7 +39,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertMenuItemSchema, Table, MenuCollection, OrderItem as OrderItemType, MenuItem as MenuItemType, Order as OrderType } from "@shared/schema";
 import { z } from "zod";
-import { apiRequest } from "@/lib/queryClient"; // Import apiRequest
+import { apiRequest } from "@/lib/queryClient";
 
 
 const menuItemFormSchemaClient = insertMenuItemSchema.extend({
@@ -49,7 +49,6 @@ const menuItemFormSchemaClient = insertMenuItemSchema.extend({
 
 type MenuItemFormData = z.infer<typeof menuItemFormSchemaClient>;
 
-// Định nghĩa kiểu cho dữ liệu doanh thu nếu API trả về { revenue: number }
 interface DailyRevenueData {
   revenue: number;
 }
@@ -59,6 +58,7 @@ const ALL_COLLECTIONS_VALUE = "_all_collections_";
 
 export default function PosPage() {
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+  // Khởi tạo activeOrder là null hoặc từ một giá trị mặc định nếu cần
   const [activeOrder, setActiveOrder] = useState<(OrderType & { items: OrderItemType[] }) | null>(null);
   const [isRevenueOpen, setIsRevenueOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
@@ -83,7 +83,6 @@ export default function PosPage() {
     },
   });
 
-  // Query để lấy dữ liệu doanh thu hàng ngày
   const { data: dailyRevenueData, isLoading: isLoadingDailyRevenue } = useQuery<DailyRevenueData>({
     queryKey: ["/api/revenue/daily"],
     queryFn: async () => {
@@ -95,31 +94,31 @@ export default function PosPage() {
       }
       return response.json();
     },
-    // Optional: Cấu hình staleTime hoặc refetchInterval nếu cần
-    // staleTime: 5 * 60 * 1000, // Dữ liệu được coi là cũ sau 5 phút
   });
 
-  const { data: currentOrderWithItems, isLoading: isLoadingCurrentOrderWithItems } = useQuery<OrderType & { items: OrderItemType[] } | null>({
+  // Query cho order hiện tại của bàn được chọn
+  const { data: currentOrderWithItems, isLoading: isLoadingCurrentOrderWithItems, refetch: refetchCurrentOrder } = useQuery<OrderType & { items: OrderItemType[] } | null>({
     queryKey: ["/api/tables", selectedTableId, "active-order"],
-    enabled: selectedTableId !== null,
-    staleTime: 0,
-    refetchInterval: 5000,
+    enabled: selectedTableId !== null, // Chỉ chạy query khi có selectedTableId
+    staleTime: 0, // Luôn coi là stale để refetch khi cần
+    refetchInterval: 5000, // Refetch định kỳ để cập nhật trạng thái bàn và order
     queryFn: async ({ queryKey }) => {
         const [_key, tableId, _path] = queryKey as [string, number, string];
         const response = await apiRequest("GET", `/api/tables/${tableId}/active-order`);
-        if (response.status === 404) return null; // Order not found
+        if (response.status === 404) return null; // Order not found cho bàn này
         if (!response.ok) {
             const errorBody = await response.text();
             throw new Error(errorBody || "Failed to fetch active order");
         }
         return response.json();
     },
+    // Quan trọng: Sử dụng `onSuccess` để cập nhật state `activeOrder`
     onSuccess: (data) => {
       setActiveOrder(data || null);
     },
     onError: (error: any) => {
       console.error("PosPage: active-order query error:", error);
-      setActiveOrder(null);
+      setActiveOrder(null); // Reset activeOrder nếu có lỗi hoặc không tìm thấy order
     }
   });
 
@@ -160,7 +159,7 @@ export default function PosPage() {
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
-      const response = await apiRequest("GET", url); // Sử dụng apiRequest
+      const response = await apiRequest("GET", url);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}, message: ${await response.text()}`);
       }
@@ -174,8 +173,8 @@ export default function PosPage() {
     mutationFn: async (orderData) => {
       const response = await apiRequest("POST", "/api/orders", orderData);
       const newOrder = await response.json();
-      if (!newOrder || !newOrder.id) { // Kiểm tra kỹ hơn response từ API
-        const errorText = await response.text(); // Đọc text nếu .json() thất bại hoặc không có id
+      if (!newOrder || !newOrder.id) {
+        const errorText = await response.text();
         throw new Error(response.statusText || errorText || "Order creation failed: Invalid response from server");
       }
       return newOrder;
@@ -188,7 +187,7 @@ export default function PosPage() {
         title: "Đơn hàng mới",
         description: `Đã tạo đơn hàng mới cho bàn ${newOrderData.tableName}.`,
       });
-      setActiveOrder(newOrderData);
+      setActiveOrder(newOrderData); // Cập nhật activeOrder ngay lập tức
     },
     onError: (error: any) => {
       toast({
@@ -202,7 +201,7 @@ export default function PosPage() {
   const completeOrderMutation = useMutation<OrderType, Error, number>({
     mutationFn: async (orderId: number) => {
       const response = await apiRequest("PUT", `/api/orders/${orderId}/complete`);
-      if (!response.ok) { // Xử lý lỗi rõ ràng hơn
+      if (!response.ok) {
         const errorText = await response.text();
         throw new Error(response.statusText || errorText || `Failed to complete order ${orderId}`);
       }
@@ -211,12 +210,12 @@ export default function PosPage() {
     onSuccess: (completedOrderData) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/revenue/daily"] }); // QUAN TRỌNG: Cập nhật doanh thu
+      queryClient.invalidateQueries({ queryKey: ["/api/revenue/daily"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tables", completedOrderData.tableId, "active-order"] });
 
       if (selectedTableId === completedOrderData.tableId) {
         setSelectedTableId(null);
-        setActiveOrder(null);
+        setActiveOrder(null); // Reset activeOrder khi order được hoàn tất
       }
 
       toast({
@@ -236,16 +235,16 @@ export default function PosPage() {
   const addItemMutation = useMutation({
     mutationFn: async ({ orderId, item }: { orderId: number; item: Partial<OrderItemType> }) => {
       const response = await apiRequest("POST", `/api/orders/${orderId}/items`, item);
-      if (!response.ok) { // Xử lý lỗi rõ ràng hơn
+      if (!response.ok) {
           const errorText = await response.text();
           throw new Error(response.statusText || errorText || "Failed to add item to order");
       }
-      return response.json();
+      return response.json(); // Backend bây giờ trả về toàn bộ order với items
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (updatedOrderData) => { // updatedOrderData sẽ là { ...order, items: [...] }
       queryClient.invalidateQueries({ queryKey: ["/api/tables", selectedTableId, "active-order"] });
-      // Doanh thu chỉ thực sự thay đổi khi hoàn tất đơn hàng, nên không cần invalidate dailyRevenue ở đây
-      // Nếu muốn cập nhật doanh thu dự kiến thì có thể invalidate, nhưng thường thì không.
+      // Cập nhật state activeOrder trực tiếp với dữ liệu mới từ response
+      setActiveOrder(updatedOrderData);
       toast({
         title: "Thêm món thành công",
         description: "Món ăn đã được thêm vào đơn hàng.",
@@ -263,29 +262,50 @@ export default function PosPage() {
 
   const handleTableSelect = useCallback(async (tableId: number) => {
     setSelectedTableId(tableId);
-    const existingOrder = queryClient.getQueryData<OrderType & { items: OrderItemType[] } | null>(
-        ["/api/tables", tableId, "active-order"]
-    );
+    // Sau khi chọn bàn, fetch ngay active order (nếu có)
+    // Dữ liệu sẽ được currentOrderWithItems cập nhật vào activeOrder
+    // Không cần logic fetch thủ công ở đây nữa vì useQuery đã handle
+  }, []); // Remove tables, queryClient, createOrderMutation from dependencies if not directly used here
 
-    if (existingOrder) {
-        setActiveOrder(existingOrder);
-    } else {
-        const table = tables.find((t) => t.id === tableId);
+  // Use useEffect để đảm bảo activeOrder được cập nhật từ cache sau khi chọn bàn
+  useEffect(() => {
+    if (selectedTableId !== null) {
+      const cachedOrder = queryClient.getQueryData<OrderType & { items: OrderItemType[] } | null>(
+        ["/api/tables", selectedTableId, "active-order"]
+      );
+      if (cachedOrder) {
+        setActiveOrder(cachedOrder);
+      } else {
+        // Nếu không có trong cache, hoặc lần đầu tiên chọn bàn,
+        // thì currentOrderWithItems sẽ chạy và gọi createOrderMutation nếu cần
+        // hoặc tự động cập nhật activeOrder khi fetch thành công.
+        // Đây là điểm quan trọng để không cần manual fetch ở handleTableSelect.
+        // Nếu muốn tạo order mới ngay lập tức khi không có order active,
+        // bạn có thể thêm logic ở đây hoặc trong `onSuccess` của `currentOrderWithItems` query,
+        // nhưng hiện tại nó đã được xử lý trong `handleTableSelect` cũ.
+        // Để giữ logic tạo order ban đầu, bạn có thể gọi lại createOrderMutation
+        // nếu `currentOrderWithItems` trả về null sau khi `selectedTableId` thay đổi.
+        const table = tables.find((t) => t.id === selectedTableId);
         if (table) {
-            try {
-                await createOrderMutation.mutateAsync({
-                    tableId: table.id,
-                    tableName: table.name,
-                    status: "active",
-                    total: 0,
-                });
-            } catch (error) {
-                // Error handled by mutation's onError
-            }
+            // Kiểm tra và tạo order nếu chưa có active order cho bàn này
+            // (Thực hiện lại logic tạo order từ handleTableSelect cũ để đảm bảo)
+            createOrderMutation.mutateAsync({
+                tableId: table.id,
+                tableName: table.name,
+                status: "active",
+                total: 0,
+            }).then(newOrderData => {
+                setActiveOrder(newOrderData);
+            }).catch(error => {
+                // handle error
+                console.error("Error creating order after table select:", error);
+            });
         }
+      }
+    } else {
+      setActiveOrder(null); // Clear activeOrder if no table is selected
     }
-  }, [tables, queryClient, createOrderMutation]); // Thêm createOrderMutation vào dependencies
-
+  }, [selectedTableId, tables, queryClient, createOrderMutation]); // Thêm `createOrderMutation` vào dependencies
 
   const handleGoToTablesTab = useCallback(() => {
     setActiveTab('tables');
@@ -320,7 +340,6 @@ export default function PosPage() {
     await completeOrderMutation.mutateAsync(activeOrder.id);
   };
 
-  // Dòng này bây giờ sẽ sử dụng dailyRevenueData từ useQuery
   const dailyRevenue = dailyRevenueData?.revenue ?? 0;
 
   const form = useForm<MenuItemFormData>({
@@ -386,15 +405,10 @@ export default function PosPage() {
     mutationFn: async (id: number) => {
       const response = await apiRequest("DELETE", `/api/menu-items/${id}`);
       if (!response.ok) {
-          const errorText = await response.text();
-          // DELETE có thể trả về 204 No Content, là OK.
-          // Nếu apiRequest của bạn ném lỗi cho non-2xx, thì kiểm tra ở đây là đủ.
-          // Nếu nó không ném lỗi cho 204, thì không cần thêm logic đặc biệt.
-          if (response.status !== 204) { // Chỉ throw nếu không phải là lỗi "No Content" (thành công)
-            throw new Error(response.statusText || errorText || `Failed to delete menu item ${id}`);
+          if (response.status !== 204) {
+            throw new Error(response.statusText || await response.text() || `Failed to delete menu item ${id}`);
           }
       }
-      // Nếu là 204, response.json() sẽ lỗi, nên chỉ trả về undefined hoặc một giá trị đánh dấu thành công.
       return response.status === 204 ? { success: true } : response.json();
     },
     onSuccess: () => {
@@ -429,8 +443,6 @@ export default function PosPage() {
   };
 
   const handleDeleteMenuItem = async (id: number) => {
-    // `confirm` là hàm của browser, có thể không lý tưởng trong React.
-    // Cân nhắc sử dụng một modal xác nhận tùy chỉnh.
     if (window.confirm("Bạn có chắc muốn xóa món này?")) {
       await deleteMenuItemMutation.mutateAsync(id);
     }
@@ -463,7 +475,6 @@ export default function PosPage() {
       });
     } catch (error) {
       console.error("Error adding menu item:", error);
-      // Toast lỗi đã được xử lý trong onError của addItemMutation
     }
   };
 
@@ -529,7 +540,7 @@ export default function PosPage() {
               />
             </div>
           </>
-        ) : ( // activeTab === 'menu'
+        ) : (
           <>
             <div className="w-80 bg-white border-r border-gray-200 p-4 overflow-y-auto shrink-0">
               <h3 className="text-lg font-semibold mb-4 flex items-center"> <Filter className="h-5 w-5 mr-2" /> Lọc thực đơn </h3>
@@ -582,7 +593,7 @@ export default function PosPage() {
                   <span className="text-sm font-medium"> Chỉ xem thực đơn. Chọn bàn từ tab "Phòng bàn" để bắt đầu gọi món. </span>
                 </div>
               )}
-              <Tabs defaultValue="view-items" className="w-full"> {/* Changed value to defaultValue */}
+              <Tabs defaultValue="view-items" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="view-items">Xem thực đơn</TabsTrigger>
                   <TabsTrigger value="manage-items">Quản lý món ăn</TabsTrigger>
@@ -600,7 +611,7 @@ export default function PosPage() {
                         <div
                           key={item.id}
                           className={`menu-item-card border rounded-lg p-4 hover:shadow-md transition-all group flex flex-col ${(!selectedTableId || !activeOrder?.id) ? 'cursor-default opacity-70' : 'cursor-pointer'}`}
-                          onClick={() => (selectedTableId && activeOrder?.id && item.available) ? handleAddMenuItemToOrder(item) : null} // Added item.available check
+                          onClick={() => (selectedTableId && activeOrder?.id && item.available) ? handleAddMenuItemToOrder(item) : null}
                         >
                           <img
                             src={item.imageUrl || "https://via.placeholder.com/300x200?text=No+Image"}
@@ -831,7 +842,7 @@ export default function PosPage() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.category}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">{formatVND(item.price)}</td> {/* Removed VND suffix here as formatVND likely adds it */}
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">{formatVND(item.price)}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${item.available ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
                                     {item.available ? "Có sẵn" : "Hết hàng"}

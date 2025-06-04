@@ -6,7 +6,7 @@ import {
   type GoogleSheetsSync, type InsertGoogleSheetsSync, type MenuCollection, type InsertMenuCollection,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql } from "drizzle-orm"; // Đã sửa lỗi import 'sql'
+import { eq, and, sql } from "drizzle-orm";
 
 export interface IStorage {
   getTables(): Promise<Table[]>;
@@ -26,6 +26,7 @@ export interface IStorage {
   deleteMenuItem(id: number): Promise<boolean>;
   getOrders(): Promise<Order[]>;
   getActiveOrderByTable(tableId: number): Promise<Order | undefined>;
+  getOrderById(id: number): Promise<Order | undefined>; // <--- ĐÃ THÊM DÒNG NÀY
   createOrder(order: InsertOrder): Promise<Order>;
   updateOrder(id: number, updates: Partial<Omit<Order, 'id' | 'createdAt' | 'tableId' | 'tableName' | 'updatedAt'>>): Promise<Order | undefined>;
   completeOrder(id: number): Promise<Order | undefined>;
@@ -59,6 +60,7 @@ export class MemStorage implements IStorage {
   async deleteMenuItem(id: number): Promise<boolean> { return false; }
   async getOrders(): Promise<Order[]> { return []; }
   async getActiveOrderByTable(tableId: number): Promise<Order | undefined> { return undefined; }
+  async getOrderById(id: number): Promise<Order | undefined> { throw new Error("Method not implemented."); } // <--- ĐÃ THÊM DÒNG NÀY
   async createOrder(order: InsertOrder): Promise<Order> { throw new Error("Not implemented"); }
   async updateOrder(id: number, updates: Partial<Omit<Order, 'id' | 'createdAt' | 'tableId' | 'tableName' | 'updatedAt'>>): Promise<Order | undefined> { throw new Error("Not implemented"); }
   async completeOrder(id: number): Promise<Order | undefined> { throw new Error("Not implemented"); }
@@ -79,7 +81,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateOrder(id: number, updates: Partial<Omit<Order, 'id' | 'createdAt' | 'tableId' | 'tableName' | 'updatedAt'>>): Promise<Order | undefined> {
-    const finalUpdates = { ...updates, updatedAt: sql`CURRENT_TIMESTAMP` }; // Sử dụng 'sql' đúng
+    const finalUpdates = { ...updates, updatedAt: sql`CURRENT_TIMESTAMP` };
     const [updatedOrder] = await db
       .update(orders)
       .set(finalUpdates)
@@ -90,7 +92,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addOrderItem(item: InsertOrderItem): Promise<OrderItem> {
-    // 1. Lấy thông tin MenuItem để có unitPrice và menuItemName
     if (!item.menuItemId) {
       throw new Error("menuItemId is required to add an order item.");
     }
@@ -99,17 +100,15 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`MenuItem with ID ${item.menuItemId} not found.`);
     }
 
-    // 2. Tính totalPrice dựa trên quantity và unitPrice từ MenuItem
     const newItemData: InsertOrderItem = {
       ...item,
       menuItemName: menuItemDetails.name,
       unitPrice: menuItemDetails.price,
-      totalPrice: item.quantity * menuItemDetails.price, // Tính toán totalPrice
+      totalPrice: item.quantity * menuItemDetails.price,
     };
 
     const [newItem] = await db.insert(orderItems).values(newItemData).returning();
     if (newItem) {
-      // Sau khi thêm item, cập nhật total và updatedAt của Order cha
       const itemsOfOrder = await this.getOrderItems(newItem.orderId);
       const newTotal = itemsOfOrder.reduce((sum, current) => sum + current.totalPrice, 0);
       await this.updateOrder(newItem.orderId, { total: newTotal });
@@ -174,7 +173,8 @@ export class DatabaseStorage implements IStorage {
   async deleteMenuItem(id: number): Promise<boolean> { const result = await db.delete(menuItems).where(eq(menuItems.id, id)).returning({ id: menuItems.id }); return result.length > 0; }
   async getOrders(): Promise<Order[]> { return await db.select().from(orders); }
   async getActiveOrderByTable(tableId: number): Promise<Order | undefined> { const [order] = await db.select().from(orders).where(and(eq(orders.tableId, tableId), eq(orders.status, 'active'))); return order; }
-  async createOrder(order: InsertOrder): Promise<Order> { const [newOrder] = await db.insert(orders).values({ ...order, updatedAt: sql`CURRENT_TIMESTAMP` }).returning(); return newOrder; } // Ensure updatedAt on create
+  async getOrderById(id: number): Promise<Order | undefined> { const [order] = await db.select().from(orders).where(eq(orders.id, id)); return order; } // <--- ĐÃ THÊM DÒNG NÀY
+  async createOrder(order: InsertOrder): Promise<Order> { const [newOrder] = await db.insert(orders).values({ ...order, updatedAt: sql`CURRENT_TIMESTAMP` }).returning(); return newOrder; }
   async getOrderItems(orderId: number): Promise<OrderItem[]> { return await db.select().from(orderItems).where(eq(orderItems.orderId, orderId)); }
   async addSyncRecord(sync: InsertGoogleSheetsSync): Promise<GoogleSheetsSync> { const [newSync] = await db.insert(googleSheetsSync).values(sync).returning(); return newSync; }
   async getSyncRecord(orderId: number): Promise<GoogleSheetsSync | undefined> { const [record] = await db.select().from(googleSheetsSync).where(eq(googleSheetsSync.orderId, orderId)); return record; }

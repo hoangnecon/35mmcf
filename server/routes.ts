@@ -8,12 +8,13 @@ import {
   insertTableSchema,
   insertMenuItemSchema,
   insertMenuCollectionSchema,
-  type Order as OrderType, // Thêm type Order để sử dụng cho sync
-  type OrderItem as OrderItemType // Thêm type OrderItem
+  type Order as OrderType,
+  type OrderItem as OrderItemType
 } from "@shared/schema";
 import { z } from "zod";
+import { eq, sql } from "drizzle-orm"; // Import sql
 
-// Google Sheets sync function (đặt ở đây hoặc import từ file riêng nếu bạn muốn)
+// Google Sheets sync function (giữ nguyên, không thay đổi)
 async function syncOrderToGoogleSheets(order: OrderType, orderItems: OrderItemType[]) {
   const { GoogleAuth } = require('google-auth-library');
   const { google } = require('googleapis');
@@ -52,22 +53,21 @@ async function syncOrderToGoogleSheets(order: OrderType, orderItems: OrderItemTy
       item.quantity,
       item.unitPrice,
       item.totalPrice,
-      order.createdAt, // Giả sử createdAt đã là ISO string hoặc định dạng phù hợp
+      order.createdAt,
     ]);
 
     if (rows.length === 0) {
       console.log(`Order ${order.id} has no items to sync.`);
-      // Vẫn ghi lại sync record nếu cần, hoặc bỏ qua
       await storage.addSyncRecord({
         orderId: order.id,
-        sheetRowId: `no-items-${Date.now()}`, // Đánh dấu là không có item
+        sheetRowId: `no-items-${Date.now()}`,
       });
       return;
     }
 
     const res = await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Sheet1!A:F', // Đảm bảo Sheet1 tồn tại
+      range: 'Sheet1!A:F',
       valueInputOption: 'RAW',
       resource: {
         values: rows,
@@ -76,16 +76,14 @@ async function syncOrderToGoogleSheets(order: OrderType, orderItems: OrderItemTy
 
     await storage.addSyncRecord({
       orderId: order.id,
-      sheetRowId: res.data.updates?.updatedRange || `${Date.now()}`, // Lấy range hoặc timestamp
+      sheetRowId: res.data.updates?.updatedRange || `${Date.now()}`,
     });
 
     console.log(`Order ${order.id} synced to Google Sheets`);
   } catch (error) {
     console.error("Google Sheets sync error:", error);
-    // Không ném lỗi ra ngoài để không ảnh hưởng đến luồng chính
   }
 }
-
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Tables
@@ -310,13 +308,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Order not found" });
       }
 
-      // Sync to Google Sheets
       try {
         const orderItems = await storage.getOrderItems(order.id);
         await syncOrderToGoogleSheets(order, orderItems);
       } catch (syncError) {
         console.error("Failed to sync to Google Sheets after order completion:", syncError);
-        // Tiếp tục hoàn tất đơn hàng ngay cả khi sync lỗi
       }
       res.json(order);
     } catch (error) {
@@ -347,33 +343,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid order ID" });
       }
 
-      // 1. Validate input from client for quantity, menuItemId, and note
       const validatedItemData = z.object({
         menuItemId: z.number().int().positive(),
         quantity: z.number().int().min(1),
         note: z.string().optional(),
       }).parse(req.body);
 
-      // 2. Lấy thông tin chi tiết của menuItem từ database
       const menuItem = await storage.getMenuItem(validatedItemData.menuItemId);
       if (!menuItem) {
         return res.status(404).json({ message: "Menu item not found" });
       }
 
-      // 3. Chuẩn bị dữ liệu để thêm vào orderItem
       const itemToAdd = {
         orderId: orderId,
         menuItemId: menuItem.id,
         menuItemName: menuItem.name,
         quantity: validatedItemData.quantity,
         unitPrice: menuItem.price,
-        totalPrice: menuItem.price * validatedItemData.quantity, // Tính toán totalPrice ở đây
+        totalPrice: menuItem.price * validatedItemData.quantity,
         note: validatedItemData.note || null,
       };
 
-      const item = await storage.addOrderItem(itemToAdd);
+      await storage.addOrderItem(itemToAdd);
 
-      res.status(201).json(item);
+      // Fetch the updated order and its items to send back
+      const updatedOrder = await storage.getOrderById(orderId); // Sử dụng hàm mới getOrderById
+      if (!updatedOrder) {
+        return res.status(404).json({ message: "Order not found after adding item" });
+      }
+      const updatedOrderItems = await storage.getOrderItems(updatedOrder.id);
+      
+      res.status(201).json({ ...updatedOrder, items: updatedOrderItems }); // Trả về toàn bộ order đã cập nhật
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid order item data", errors: error.errors });
@@ -488,8 +488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Valid Order ID is required" });
       }
 
-      // Lấy order và order items để đồng bộ
-      const order = await storage.updateOrder(orderId, {}); // Chỉ để lấy order, không update gì
+      const order = await storage.updateOrder(orderId, {});
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
