@@ -1,6 +1,9 @@
+// client/src/components/table-grid.tsx
 import { Table, Crown, ShoppingBag, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import TableManagementMenu from "@/components/table-management-menu";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface TableGridProps {
   tables: any[];
@@ -17,153 +20,88 @@ export default function TableGrid({ tables, selectedTableId, onTableSelect }: Ta
   };
 
   const getTableClasses = (table: any) => {
-    const baseClasses = "table-card";
+    const baseClasses = "table-card flex flex-col items-center justify-center space-y-2";
     const selectedClasses = selectedTableId === table.id ? "selected" : "";
+    // Check if table has an active order to mark it as 'occupied'
+    const hasActiveOrder = activeOrdersForTables.some(order => order.tableId === table.id && order.status === 'active');
+    const statusClasses = hasActiveOrder ? "occupied" : "";
     const typeClasses = table.type === "vip" ? "vip" : table.type === "special" ? "special" : "";
     
-    return `${baseClasses} ${selectedClasses} ${typeClasses}`.trim();
+    return `${baseClasses} ${selectedClasses} ${statusClasses} ${typeClasses}`.trim();
   };
 
+  // Fetch all active orders to determine which tables are occupied
+  const { data: activeOrdersForTables = [] } = useQuery({
+    queryKey: ["/api/orders"],
+    select: (data: any[]) => data.filter(order => order.status === 'active'),
+    staleTime: 5000, // Keep data fresh for a short period
+    refetchInterval: 5000, // Refetch every 5 seconds to update table status
+  });
+
+
+  // Filter tables by type for rendering
+  const specialTables = tables.filter(table => table.type === "special");
+  const regularTables = tables.filter(table => table.type === "regular");
+  const vipTables = tables.filter(table => table.type === "vip");
+
+  const occupiedTablesCount = activeOrdersForTables.filter(order => tables.some(t => t.id === order.tableId)).length;
+  const availableTablesCount = tables.length - occupiedTablesCount;
+
   return (
-    <div>
-      {/* Table Categories */}
-      <div className="mb-6">
-        <div className="flex flex-wrap gap-2 mb-4 items-center">
-          <Button className="bg-primary text-primary-foreground">
-            <Table className="h-4 w-4 mr-2" />
-            Tất cả (34)
-          </Button>
-          <Button variant="secondary" className="text-gray-700 hover:bg-gray-300">
-            Sử dụng (2)
-          </Button>
-          <Button variant="secondary" className="text-gray-700 hover:bg-gray-300">
-            Còn trống (32)
-          </Button>
-          <TableManagementMenu tables={tables} />
-        </div>
+    <div className="table-grid-container">
+      {/* Table Categories and Management Menu */}
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        <Button className="bg-primary text-primary-foreground">
+          <Table className="h-4 w-4 mr-2" />
+          Tất cả ({tables.length})
+        </Button>
+        <Button variant="secondary" className="text-gray-700 hover:bg-gray-300">
+          Sử dụng ({occupiedTablesCount})
+        </Button>
+        <Button variant="secondary" className="text-gray-700 hover:bg-gray-300">
+          Còn trống ({availableTablesCount})
+        </Button>
+        <TableManagementMenu tables={tables} />
       </div>
 
-      {/* Table Grid */}
+      {/* Special Tables (Mang về, Giao đi) */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        {specialTables.map((table) => (
+          <div
+            key={table.id}
+            className={`${getTableClasses(table)} h-32 w-full`}
+            onClick={() => onTableSelect(table.id)}
+          >
+            {getTableIcon(table)}
+            <div className="text-sm font-medium mt-2">{table.name}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Regular Tables and VIP Rooms */}
       <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
-        {/* Special Tables (Mang về, Giao đi) - First Row */}
-        {tables
-          .filter(table => table.type === "special")
-          .slice(0, 2)
-          .map((table) => (
-            <div key={table.id} className="col-span-2 grid grid-cols-2 gap-2">
-              <div
-                className={getTableClasses(table)}
-                onClick={() => onTableSelect(table.id)}
-              >
-                {getTableIcon(table)}
-                <div className="text-sm font-medium mt-2">{table.name}</div>
-              </div>
-            </div>
-          ))}
-
-        {/* Regular Tables - Bàn 1-6 on first row */}
-        {tables
-          .filter(table => table.type === "regular")
-          .slice(0, 6)
-          .map((table) => (
-            <div
-              key={table.id}
-              className={getTableClasses(table)}
-              onClick={() => onTableSelect(table.id)}
-            >
-              {getTableIcon(table)}
-              <div className="text-sm font-medium mt-2">{table.name}</div>
-            </div>
-          ))}
-
-        {/* Regular Tables - Bàn 7-14 */}
-        {tables
-          .filter(table => table.type === "regular")
-          .slice(6, 14)
-          .map((table) => (
-            <div
-              key={table.id}
-              className={getTableClasses(table)}
-              onClick={() => onTableSelect(table.id)}
-            >
-              {getTableIcon(table)}
-              <div className="text-sm font-medium mt-2">{table.name}</div>
-            </div>
-          ))}
-
-        {/* Regular Tables - Bàn 15-21 */}
-        {tables
-          .filter(table => table.type === "regular")
-          .slice(14, 21)
-          .map((table) => (
-            <div
-              key={table.id}
-              className={getTableClasses(table)}
-              onClick={() => onTableSelect(table.id)}
-            >
-              {getTableIcon(table)}
-              <div className="text-sm font-medium mt-2">{table.name}</div>
-            </div>
-          ))}
-
-        {/* VIP Rooms - Phòng VIP 1 */}
-        {tables
-          .filter(table => table.type === "vip")
-          .slice(0, 1)
-          .map((table) => (
-            <div
-              key={table.id}
-              className={getTableClasses(table)}
-              onClick={() => onTableSelect(table.id)}
-            >
-              {getTableIcon(table)}
-              <div className="text-sm font-medium mt-2">{table.name}</div>
-            </div>
-          ))}
-
-        {/* VIP Rooms Row */}
-        {tables
-          .filter(table => table.type === "vip")
-          .slice(1, 9)
-          .map((table) => (
-            <div
-              key={table.id}
-              className={getTableClasses(table)}
-              onClick={() => onTableSelect(table.id)}
-            >
-              {getTableIcon(table)}
-              <div className="text-sm font-medium mt-2">{table.name}</div>
-            </div>
-          ))}
-
-        {/* Last Row - VIP 9 and Bàn 22 */}
-        {tables
-          .filter(table => table.type === "vip")
-          .slice(8, 9)
-          .map((table) => (
-            <div
-              key={table.id}
-              className={getTableClasses(table)}
-              onClick={() => onTableSelect(table.id)}
-            >
-              {getTableIcon(table)}
-              <div className="text-sm font-medium mt-2">{table.name}</div>
-            </div>
-          ))}
-
-        {tables
-          .filter(table => table.type === "regular")
-          .slice(21, 22)
-          .map((table) => (
-            <div
-              key={table.id}
-              className={getTableClasses(table)}
-              onClick={() => onTableSelect(table.id)}
-            >
-              {getTableIcon(table)}
-              <div className="text-sm font-medium mt-2">{table.name}</div>
-            </div>
-          ))}
+        {/* Render regular tables (Bàn 1-22) */}
+        {regularTables.map((table) => (
+          <div
+            key={table.id}
+            className={getTableClasses(table)}
+            onClick={() => onTableSelect(table.id)}
+          >
+            {getTableIcon(table)}
+            <div className="text-sm font-medium mt-2">{table.name}</div>
+          </div>
+        ))}
+        {/* Render VIP tables (Phòng VIP 1-10) */}
+        {vipTables.map((table) => (
+          <div
+            key={table.id}
+            className={getTableClasses(table)}
+            onClick={() => onTableSelect(table.id)}
+          >
+            {getTableIcon(table)}
+            <div className="text-sm font-medium mt-2">{table.name}</div>
+          </div>
+        ))}
       </div>
 
       {/* Quick Order Section */}

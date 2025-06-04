@@ -1,3 +1,4 @@
+// client/src/components/order-panel.tsx
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -13,8 +14,10 @@ import {
   Clock,
   CheckCircle,
   Printer,
-  Bell
+  Bell,
+  X // Added X for clearing item
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface OrderPanelProps {
   selectedTable: any;
@@ -32,20 +35,28 @@ export default function OrderPanel({
   isCheckingOut 
 }: OrderPanelProps) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   // Update order item mutation
   const updateItemMutation = useMutation({
-    mutationFn: async ({ itemId, quantity, unitPrice, note }: any) => {
+    mutationFn: async ({ itemId, quantity, note }: any) => {
       const response = await apiRequest("PUT", `/api/order-items/${itemId}`, {
         quantity,
-        unitPrice,
         note,
       });
       return response.json();
     },
     onSuccess: () => {
+      // Invalidate the active order query to refetch updated data
       queryClient.invalidateQueries({ queryKey: ["/api/tables", selectedTable?.id, "active-order"] });
     },
+    onError: (error: any) => {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể cập nhật số lượng món.",
+        variant: "destructive",
+      });
+    }
   });
 
   // Remove order item mutation
@@ -55,26 +66,50 @@ export default function OrderPanel({
       return response.json();
     },
     onSuccess: () => {
+      // Invalidate the active order query to refetch updated data
       queryClient.invalidateQueries({ queryKey: ["/api/tables", selectedTable?.id, "active-order"] });
+      toast({
+        title: "Thành công",
+        description: "Đã xóa món khỏi đơn hàng.",
+        variant: "default",
+      });
     },
+    onError: (error: any) => {
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể xóa món.",
+        variant: "destructive",
+      });
+    }
   });
 
   const handleQuantityChange = async (item: any, newQuantity: number) => {
+    if (updateItemMutation.isPending || removeItemMutation.isPending) return; // Prevent multiple clicks
+
     if (newQuantity <= 0) {
-      await removeItemMutation.mutateAsync(item.id);
+      // Optionally ask for confirmation before removing
+      if (confirm(`Bạn có chắc muốn xóa "${item.menuItemName}" khỏi đơn hàng?`)) {
+        await removeItemMutation.mutateAsync(item.id);
+      }
     } else {
       await updateItemMutation.mutateAsync({
         itemId: item.id,
         quantity: newQuantity,
-        unitPrice: item.unitPrice,
-        note: item.note,
       });
     }
   };
 
+  const handleRemoveItem = async (itemId: number, itemName: string) => {
+    if (removeItemMutation.isPending) return; // Prevent multiple clicks
+    if (confirm(`Bạn có chắc muốn xóa "${itemName}" khỏi đơn hàng?`)) {
+      await removeItemMutation.mutateAsync(itemId);
+    }
+  };
+
+
   const orderItems = activeOrder?.items || [];
   const subtotal = orderItems.reduce((sum: number, item: any) => sum + item.totalPrice, 0);
-  const discount = 0;
+  const discount = 0; // Placeholder for discount
   const total = subtotal - discount;
 
   if (!selectedTable) {
@@ -99,6 +134,7 @@ export default function OrderPanel({
             <span>{selectedTable.name} / Lầu 3</span>
           </h2>
           <div className="flex space-x-2">
+            {/* These buttons are placeholders, implement their functionality as needed */}
             <Button variant="ghost" size="sm" className="text-accent-foreground hover:bg-blue-100 p-1">
               <ArrowUp10 className="h-4 w-4" />
             </Button>
@@ -115,7 +151,8 @@ export default function OrderPanel({
         </div>
         <div className="text-xs text-gray-600">
           <Clock className="h-3 w-3 inline mr-1" />
-          <span>Tín khách hàng (74)</span>
+          {/* Example of dynamic time or order status info */}
+          <span>{activeOrder ? `Đơn hàng: ${activeOrder.id} - ${new Date(activeOrder.createdAt).toLocaleTimeString('vi-VN')}` : "Chưa có đơn hàng"}</span>
         </div>
       </div>
 
@@ -146,8 +183,17 @@ export default function OrderPanel({
                     <div className="text-xs text-gray-500">{item.note}</div>
                   )}
                 </div>
-                <div className="text-right">
-                  <div className="font-semibold text-gray-800">{item.quantity}</div>
+                <div className="text-right flex items-center gap-2">
+                    <div className="font-semibold text-gray-800">{formatVND(item.totalPrice)}</div>
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-gray-400 hover:text-red-500 p-1"
+                        onClick={() => handleRemoveItem(item.id, item.menuItemName)}
+                        disabled={removeItemMutation.isPending}
+                    >
+                        <X className="h-4 w-4" />
+                    </Button>
                 </div>
               </div>
               <div className="flex items-center justify-between">
@@ -172,8 +218,8 @@ export default function OrderPanel({
                     <Plus className="h-3 w-3" />
                   </Button>
                 </div>
-                <div className="text-right">
-                  <div className="font-semibold text-primary">{formatVND(item.totalPrice)}</div>
+                <div className="text-right text-sm text-gray-500">
+                  {formatVND(item.unitPrice)}/món
                 </div>
               </div>
             </div>
