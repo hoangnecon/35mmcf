@@ -9,81 +9,11 @@ import {
   insertMenuItemSchema,
   insertMenuCollectionSchema,
   type Order as OrderType,
-  type OrderItem as OrderItemType
+  type OrderItem as OrderItemType,
+  type Bill as BillType, // Thêm import cho BillType
 } from "@shared/schema";
 import { z } from "zod";
-import { eq, sql } from "drizzle-orm"; // Import sql
-
-// Google Sheets sync function (giữ nguyên, không thay đổi)
-async function syncOrderToGoogleSheets(order: OrderType, orderItems: OrderItemType[]) {
-  const { GoogleAuth } = require('google-auth-library');
-  const { google } = require('googleapis');
-
-  try {
-    const credentialsEnv = process.env.GOOGLE_SHEETS_CREDENTIALS;
-    if (!credentialsEnv) {
-      console.warn("GOOGLE_SHEETS_CREDENTIALS not set. Skipping Google Sheets sync.");
-      return;
-    }
-
-    let credentials;
-    try {
-      credentials = JSON.parse(credentialsEnv);
-    } catch (e) {
-      console.error("Failed to parse GOOGLE_SHEETS_CREDENTIALS. Skipping Google Sheets sync.", e);
-      return;
-    }
-
-    const auth = new GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    const sheets = google.sheets({ version: 'v4', auth });
-    const spreadsheetId = process.env.GOOGLE_SHEETS_ID || process.env.GOOGLE_SPREADSHEET_ID;
-
-    if (!spreadsheetId) {
-      console.warn("Google Sheets ID (GOOGLE_SHEETS_ID or GOOGLE_SPREADSHEET_ID) not configured. Skipping Google Sheets sync.");
-      return;
-    }
-
-    const rows = orderItems.map(item => [
-      order.tableName,
-      item.menuItemName,
-      item.quantity,
-      item.unitPrice,
-      item.totalPrice,
-      order.createdAt,
-    ]);
-
-    if (rows.length === 0) {
-      console.log(`Order ${order.id} has no items to sync.`);
-      await storage.addSyncRecord({
-        orderId: order.id,
-        sheetRowId: `no-items-${Date.now()}`,
-      });
-      return;
-    }
-
-    const res = await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: 'Sheet1!A:F',
-      valueInputOption: 'RAW',
-      resource: {
-        values: rows,
-      },
-    });
-
-    await storage.addSyncRecord({
-      orderId: order.id,
-      sheetRowId: res.data.updates?.updatedRange || `${Date.now()}`,
-    });
-
-    console.log(`Order ${order.id} synced to Google Sheets`);
-  } catch (error) {
-    console.error("Google Sheets sync error:", error);
-  }
-}
+import { eq, sql } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Tables
@@ -302,18 +232,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/orders/:id/complete", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const order = await storage.completeOrder(id);
+      const order = await storage.completeOrder(id); // Hàm completeOrder đã được chỉnh sửa để tạo bill
 
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
 
-      try {
-        const orderItems = await storage.getOrderItems(order.id);
-        await syncOrderToGoogleSheets(order, orderItems);
-      } catch (syncError) {
-        console.error("Failed to sync to Google Sheets after order completion:", syncError);
-      }
+      // Loại bỏ logic syncOrderToGoogleSheets ở đây
+      // try {
+      //   const orderItems = await storage.getOrderItems(order.id);
+      //   await syncOrderToGoogleSheets(order, orderItems);
+      // } catch (syncError) {
+      //   console.error("Failed to sync to Google Sheets after order completion:", syncError);
+      // }
       res.json(order);
     } catch (error) {
       console.error("Failed to complete order:", error);
@@ -367,13 +298,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.addOrderItem(itemToAdd);
 
       // Fetch the updated order and its items to send back
-      const updatedOrder = await storage.getOrderById(orderId); // Sử dụng hàm mới getOrderById
+      const updatedOrder = await storage.getOrderById(orderId);
       if (!updatedOrder) {
         return res.status(404).json({ message: "Order not found after adding item" });
       }
       const updatedOrderItems = await storage.getOrderItems(updatedOrder.id);
       
-      res.status(201).json({ ...updatedOrder, items: updatedOrderItems }); // Trả về toàn bộ order đã cập nhật
+      res.status(201).json({ ...updatedOrder, items: updatedOrderItems });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid order item data", errors: error.errors });
@@ -450,7 +381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Revenue
+  // Revenue (sẽ lấy từ bảng bills)
   app.get("/api/revenue/daily", async (req, res) => {
     try {
       const dateString = req.query.date as string | undefined;
@@ -481,25 +412,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/sync-to-sheets", async (req, res) => {
+  // Thêm route để lấy danh sách các bill đã hoàn thành (nếu cần cho báo cáo chi tiết hơn)
+  app.get("/api/bills", async (req, res) => {
     try {
-      const { orderId } = req.body;
-      if (!orderId || typeof orderId !== 'number') {
-        return res.status(400).json({ message: "Valid Order ID is required" });
+      const { startDate, endDate } = req.query;
+      let start: Date | undefined;
+      let end: Date | undefined;
+
+      if (startDate) {
+        start = new Date(startDate as string);
+        if (isNaN(start.getTime())) {
+          return res.status(400).json({ message: "Invalid startDate format" });
+        }
+      }
+      if (endDate) {
+        end = new Date(endDate as string);
+        if (isNaN(end.getTime())) {
+          return res.status(400).json({ message: "Invalid endDate format" });
+        }
       }
 
-      const order = await storage.updateOrder(orderId, {});
-      if (!order) {
-        return res.status(404).json({ message: "Order not found" });
-      }
-
-      const orderItems = await storage.getOrderItems(orderId);
-      await syncOrderToGoogleSheets(order, orderItems);
-
-      res.json({ success: true, message: "Order synced to Google Sheets" });
+      const bills = await storage.getBills(start, end);
+      res.json(bills);
     } catch (error) {
-      console.error("Sync error:", error);
-      res.status(500).json({ message: "Failed to sync to Google Sheets" });
+      console.error("Failed to fetch bills:", error);
+      res.status(500).json({ message: "Failed to fetch bills" });
     }
   });
 

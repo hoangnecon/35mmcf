@@ -1,5 +1,5 @@
 // client/src/components/order-panel.tsx
-import { useState } from "react";
+import { useState, useEffect } from "react"; // Thêm useEffect
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -15,13 +15,14 @@ import {
   CheckCircle,
   Printer,
   Bell,
-  X // Added X for clearing item
+  X 
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { OrderType, OrderItem as OrderItemType } from "@shared/schema";
 
 interface OrderPanelProps {
-  selectedTable: any;
-  activeOrder: any;
+  selectedTable: { id: number; name: string } | null;
+  activeOrder: (OrderType & { items: OrderItemType[] }) | null;
   onOpenMenu: () => void;
   onCheckout: () => void;
   isCheckingOut: boolean;
@@ -39,77 +40,68 @@ export default function OrderPanel({
 
   // Update order item mutation
   const updateItemMutation = useMutation({
-    mutationFn: async ({ itemId, quantity, note }: any) => {
-      const response = await apiRequest("PUT", `/api/order-items/${itemId}`, {
-        quantity,
-        note,
-      });
+    mutationFn: async ({ itemId, quantity, note }: { itemId: number; quantity: number; note?: string }) => {
+      const response = await apiRequest("PUT", `/api/order-items/${itemId}`, { quantity, note });
+      if (!response.ok) throw new Error("Failed to update item");
       return response.json();
     },
     onSuccess: () => {
-      // Invalidate the active order query to refetch updated data
       queryClient.invalidateQueries({ queryKey: ["/api/tables", selectedTable?.id, "active-order"] });
     },
     onError: (error: any) => {
-      toast({
-        title: "Lỗi",
-        description: error.message || "Không thể cập nhật số lượng món.",
-        variant: "destructive",
-      });
-    }
+      toast({ title: "Lỗi", description: error.message || "Không thể cập nhật số lượng món.", variant: "destructive" });
+    },
   });
 
   // Remove order item mutation
   const removeItemMutation = useMutation({
     mutationFn: async (itemId: number) => {
       const response = await apiRequest("DELETE", `/api/order-items/${itemId}`);
+      if (!response.ok) throw new Error("Failed to remove item");
       return response.json();
     },
     onSuccess: () => {
-      // Invalidate the active order query to refetch updated data
       queryClient.invalidateQueries({ queryKey: ["/api/tables", selectedTable?.id, "active-order"] });
-      toast({
-        title: "Thành công",
-        description: "Đã xóa món khỏi đơn hàng.",
-        variant: "default",
-      });
+      toast({ title: "Thành công", description: "Đã xóa món khỏi đơn hàng.", variant: "default" });
     },
     onError: (error: any) => {
-      toast({
-        title: "Lỗi",
-        description: error.message || "Không thể xóa món.",
-        variant: "destructive",
-      });
-    }
+      toast({ title: "Lỗi", description: error.message || "Không thể xóa món.", variant: "destructive" });
+    },
   });
 
-  const handleQuantityChange = async (item: any, newQuantity: number) => {
-    if (updateItemMutation.isPending || removeItemMutation.isPending) return; // Prevent multiple clicks
-
+  const handleQuantityChange = async (item: OrderItemType, newQuantity: number) => {
+    if (updateItemMutation.isPending || removeItemMutation.isPending) return;
     if (newQuantity <= 0) {
-      // Optionally ask for confirmation before removing
       if (confirm(`Bạn có chắc muốn xóa "${item.menuItemName}" khỏi đơn hàng?`)) {
         await removeItemMutation.mutateAsync(item.id);
       }
     } else {
-      await updateItemMutation.mutateAsync({
-        itemId: item.id,
-        quantity: newQuantity,
-      });
+      await updateItemMutation.mutateAsync({ itemId: item.id, quantity: newQuantity });
     }
   };
 
   const handleRemoveItem = async (itemId: number, itemName: string) => {
-    if (removeItemMutation.isPending) return; // Prevent multiple clicks
+    if (removeItemMutation.isPending) return;
     if (confirm(`Bạn có chắc muốn xóa "${itemName}" khỏi đơn hàng?`)) {
       await removeItemMutation.mutateAsync(itemId);
     }
   };
 
+  // Đảm bảo orderItems luôn lấy từ activeOrder mới nhất
+  const [orderItems, setOrderItems] = useState<OrderItemType[]>([]);
+  useEffect(() => {
+    console.log("OrderPanel useEffect - activeOrder:", activeOrder);
+    if (activeOrder) {
+      setOrderItems(activeOrder.items || []);
+    } else {
+      setOrderItems([]);
+    }
+  }, [activeOrder]);
 
-  const orderItems = activeOrder?.items || [];
-  const subtotal = orderItems.reduce((sum: number, item: any) => sum + item.totalPrice, 0);
-  const discount = 0; // Placeholder for discount
+  console.log("OrderPanel render - orderItems:", orderItems);
+
+  const subtotal = orderItems.reduce((sum: number, item: OrderItemType) => sum + item.totalPrice, 0);
+  const discount = 0;
   const total = subtotal - discount;
 
   if (!selectedTable) {
@@ -126,7 +118,6 @@ export default function OrderPanel({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Order Header */}
       <div className="bg-accent p-4 border-b">
         <div className="flex items-center justify-between mb-2">
           <h2 className="font-semibold text-accent-foreground flex items-center">
@@ -134,7 +125,6 @@ export default function OrderPanel({
             <span>{selectedTable.name} / Lầu 3</span>
           </h2>
           <div className="flex space-x-2">
-            {/* These buttons are placeholders, implement their functionality as needed */}
             <Button variant="ghost" size="sm" className="text-accent-foreground hover:bg-blue-100 p-1">
               <ArrowUp10 className="h-4 w-4" />
             </Button>
@@ -151,12 +141,9 @@ export default function OrderPanel({
         </div>
         <div className="text-xs text-gray-600">
           <Clock className="h-3 w-3 inline mr-1" />
-          {/* Example of dynamic time or order status info */}
           <span>{activeOrder ? `Đơn hàng: ${activeOrder.id} - ${new Date(activeOrder.createdAt).toLocaleTimeString('vi-VN')}` : "Chưa có đơn hàng"}</span>
         </div>
       </div>
-
-      {/* Order Items */}
       <div className="flex-1 overflow-y-auto">
         {orderItems.length === 0 ? (
           <div className="p-6 text-center">
@@ -172,28 +159,26 @@ export default function OrderPanel({
             </Button>
           </div>
         ) : (
-          orderItems.map((item: any, index: number) => (
-            <div key={item.id} className="order-item">
+          orderItems.map((item: OrderItemType, index: number) => (
+            <div key={item.id} className="p-2 border-b">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex-1">
                   <div className="font-medium text-gray-800">
                     {index + 1}. {item.menuItemName}
                   </div>
-                  {item.note && (
-                    <div className="text-xs text-gray-500">{item.note}</div>
-                  )}
+                  {item.note && <div className="text-xs text-gray-500">{item.note}</div>}
                 </div>
                 <div className="text-right flex items-center gap-2">
-                    <div className="font-semibold text-gray-800">{formatVND(item.totalPrice)}</div>
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-gray-400 hover:text-red-500 p-1"
-                        onClick={() => handleRemoveItem(item.id, item.menuItemName)}
-                        disabled={removeItemMutation.isPending}
-                    >
-                        <X className="h-4 w-4" />
-                    </Button>
+                  <div className="font-semibold text-gray-800">{formatVND(item.totalPrice)}</div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-gray-400 hover:text-red-500 p-1"
+                    onClick={() => handleRemoveItem(item.id, item.menuItemName)}
+                    disabled={removeItemMutation.isPending}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
               <div className="flex items-center justify-between">
@@ -225,8 +210,6 @@ export default function OrderPanel({
             </div>
           ))
         )}
-
-        {/* Add More Items Button */}
         {orderItems.length > 0 && (
           <div className="p-4">
             <Button 
@@ -240,8 +223,6 @@ export default function OrderPanel({
           </div>
         )}
       </div>
-
-      {/* Order Summary */}
       <div className="border-t border-gray-200 p-4 bg-gray-50">
         <div className="space-y-2 mb-4">
           <div className="flex justify-between text-sm">
@@ -257,8 +238,6 @@ export default function OrderPanel({
             <span className="text-primary">{formatVND(total)}</span>
           </div>
         </div>
-
-        {/* Action Buttons */}
         <div className="space-y-2">
           <Button 
             className="w-full bg-green-500 hover:bg-green-600 text-white py-3"
