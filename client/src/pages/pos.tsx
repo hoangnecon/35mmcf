@@ -262,50 +262,19 @@ export default function PosPage() {
 
   const handleTableSelect = useCallback(async (tableId: number) => {
     setSelectedTableId(tableId);
-    // Sau khi chọn bàn, fetch ngay active order (nếu có)
-    // Dữ liệu sẽ được currentOrderWithItems cập nhật vào activeOrder
-    // Không cần logic fetch thủ công ở đây nữa vì useQuery đã handle
-  }, []); // Remove tables, queryClient, createOrderMutation from dependencies if not directly used here
+    refetchCurrentOrder();
+  }, [refetchCurrentOrder]);
 
-  // Use useEffect để đảm bảo activeOrder được cập nhật từ cache sau khi chọn bàn
+  // **START OF MODIFICATION**
+  // Đã chỉnh sửa useEffect để không tự động tạo đơn hàng
   useEffect(() => {
-    if (selectedTableId !== null) {
-      const cachedOrder = queryClient.getQueryData<OrderType & { items: OrderItemType[] } | null>(
-        ["/api/tables", selectedTableId, "active-order"]
-      );
-      if (cachedOrder) {
-        setActiveOrder(cachedOrder);
-      } else {
-        // Nếu không có trong cache, hoặc lần đầu tiên chọn bàn,
-        // thì currentOrderWithItems sẽ chạy và gọi createOrderMutation nếu cần
-        // hoặc tự động cập nhật activeOrder khi fetch thành công.
-        // Đây là điểm quan trọng để không cần manual fetch ở handleTableSelect.
-        // Nếu muốn tạo order mới ngay lập tức khi không có order active,
-        // bạn có thể thêm logic ở đây hoặc trong `onSuccess` của `currentOrderWithItems` query,
-        // nhưng hiện tại nó đã được xử lý trong `handleTableSelect` cũ.
-        // Để giữ logic tạo order ban đầu, bạn có thể gọi lại createOrderMutation
-        // nếu `currentOrderWithItems` trả về null sau khi `selectedTableId` thay đổi.
-        const table = tables.find((t) => t.id === selectedTableId);
-        if (table) {
-            // Kiểm tra và tạo order nếu chưa có active order cho bàn này
-            // (Thực hiện lại logic tạo order từ handleTableSelect cũ để đảm bảo)
-            createOrderMutation.mutateAsync({
-                tableId: table.id,
-                tableName: table.name,
-                status: "active",
-                total: 0,
-            }).then(newOrderData => {
-                setActiveOrder(newOrderData);
-            }).catch(error => {
-                // handle error
-                console.error("Error creating order after table select:", error);
-            });
-        }
-      }
-    } else {
+    if (selectedTableId === null) {
       setActiveOrder(null); // Clear activeOrder if no table is selected
     }
-  }, [selectedTableId, tables, queryClient, createOrderMutation]); // Thêm `createOrderMutation` vào dependencies
+    // Logic fetch và cập nhật activeOrder khi selectedTableId thay đổi
+    // đã được handle bởi `currentOrderWithItems` query và `onSuccess` của nó.
+  }, [selectedTableId]);
+  // **END OF MODIFICATION**
 
   const handleGoToTablesTab = useCallback(() => {
     setActiveTab('tables');
@@ -448,18 +417,58 @@ export default function PosPage() {
     }
   };
 
+  // **START OF MODIFICATION**
+  // Đã điều chỉnh logic để tạo đơn hàng chỉ khi thêm món đầu tiên
   const handleAddMenuItemToOrder = async (menuItem: MenuItemType) => {
-    if (!selectedTableId || !activeOrder?.id) {
+    if (!selectedTableId) {
       toast({
-        title: "Chưa chọn bàn hoặc đơn hàng chưa sẵn sàng",
-        description: "Vui lòng chọn bàn và đảm bảo đơn hàng đã được tạo trước khi thêm món.",
+        title: "Chưa chọn bàn",
+        description: "Vui lòng chọn bàn từ tab 'Phòng bàn' trước khi thêm món.",
         variant: "destructive",
       });
       return;
     }
 
+    let currentOrderId = activeOrder?.id;
+    let currentTableName = activeOrder?.tableName;
+
+    // Nếu chưa có activeOrder cho bàn này, tạo một order mới
+    if (!currentOrderId) {
+        const table = tables.find((t) => t.id === selectedTableId);
+        if (!table) {
+            toast({
+                title: "Lỗi",
+                description: "Không tìm thấy thông tin bàn.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        try {
+            // Sử dụng mutateAsync để đợi kết quả tạo order
+            const newOrder = await createOrderMutation.mutateAsync({
+                tableId: table.id,
+                tableName: table.name,
+                status: "active",
+                total: 0, // Tổng ban đầu là 0
+            });
+            currentOrderId = newOrder.id;
+            currentTableName = newOrder.tableName;
+            setActiveOrder(newOrder); // Cập nhật activeOrder ngay lập tức
+        } catch (error) {
+            console.error("Error creating order before adding item:", error);
+            // Hiển thị toast lỗi nếu tạo order thất bại
+            toast({
+                title: "Lỗi tạo đơn",
+                description: error.message || "Không thể tạo đơn hàng mới cho bàn này.",
+                variant: "destructive",
+            });
+            return; // Dừng lại nếu không tạo được order
+        }
+    }
+
     const orderItem: Partial<OrderItemType> = {
-      orderId: activeOrder.id,
+      orderId: currentOrderId,
       menuItemId: menuItem.id,
       menuItemName: menuItem.name,
       quantity: 1,
@@ -470,13 +479,14 @@ export default function PosPage() {
 
     try {
       await addItemMutation.mutateAsync({
-        orderId: activeOrder.id,
+        orderId: currentOrderId,
         item: orderItem,
       });
     } catch (error) {
       console.error("Error adding menu item:", error);
     }
   };
+  // **END OF MODIFICATION**
 
   const categories = ["Đồ uống", "Đồ ăn", "Đồ ăn vặt", "Tráng miệng", "Món chính", "Khai vị"];
   const selectedTableInfo = selectedTableId ? tables.find(t => t.id === selectedTableId) : null;
@@ -610,8 +620,8 @@ export default function PosPage() {
                       {menuItems.map((item) => (
                         <div
                           key={item.id}
-                          className={`menu-item-card border rounded-lg p-4 hover:shadow-md transition-all group flex flex-col ${(!selectedTableId || !activeOrder?.id) ? 'cursor-default opacity-70' : 'cursor-pointer'}`}
-                          onClick={() => (selectedTableId && activeOrder?.id && item.available) ? handleAddMenuItemToOrder(item) : null}
+                          className={`menu-item-card border rounded-lg p-4 hover:shadow-md transition-all group flex flex-col ${(!selectedTableId || !item.available) ? 'cursor-default opacity-70' : 'cursor-pointer'}`}
+                          onClick={() => (selectedTableId && item.available) ? handleAddMenuItemToOrder(item) : null}
                         >
                           <img
                             src={item.imageUrl || "https://via.placeholder.com/300x200?text=No+Image"}
