@@ -1,8 +1,8 @@
-// client/src/components/order-panel.tsx
-import { useState, useEffect } from "react"; // Thêm useEffect
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { formatVND } from "@/lib/utils";
 import { 
   Table, 
@@ -15,7 +15,8 @@ import {
   CheckCircle,
   Printer,
   Bell,
-  X 
+  X,
+  Edit
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { OrderType, OrderItem as OrderItemType } from "@shared/schema";
@@ -37,10 +38,12 @@ export default function OrderPanel({
 }: OrderPanelProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [editingNoteItemId, setEditingNoteItemId] = useState<number | null>(null);
+  const [noteInput, setNoteInput] = useState<string>("");
 
   // Update order item mutation
   const updateItemMutation = useMutation({
-    mutationFn: async ({ itemId, quantity, note }: { itemId: number; quantity: number; note?: string }) => {
+    mutationFn: async ({ itemId, quantity, note }: { itemId: number; quantity?: number; note?: string }) => {
       const response = await apiRequest("PUT", `/api/order-items/${itemId}`, { quantity, note });
       if (!response.ok) throw new Error("Failed to update item");
       return response.json();
@@ -49,7 +52,7 @@ export default function OrderPanel({
       queryClient.invalidateQueries({ queryKey: ["/api/tables", selectedTable?.id, "active-order"] });
     },
     onError: (error: any) => {
-      toast({ title: "Lỗi", description: error.message || "Không thể cập nhật số lượng món.", variant: "destructive" });
+      toast({ title: "Lỗi", description: error.message || "Không thể cập nhật món.", variant: "destructive" });
     },
   });
 
@@ -87,7 +90,24 @@ export default function OrderPanel({
     }
   };
 
-  // Đảm bảo orderItems luôn lấy từ activeOrder mới nhất
+  const handleEditNote = (item: OrderItemType) => {
+    setEditingNoteItemId(item.id);
+    setNoteInput(item.note || "");
+  };
+
+  const handleSaveNote = async (itemId: number) => {
+    if (updateItemMutation.isPending) return;
+    await updateItemMutation.mutateAsync({ itemId, note: noteInput });
+    setEditingNoteItemId(null);
+    setNoteInput("");
+    toast({ title: "Thành công", description: "Đã cập nhật ghi chú.", variant: "default" });
+  };
+
+  const handleCancelNote = () => {
+    setEditingNoteItemId(null);
+    setNoteInput("");
+  };
+
   const [orderItems, setOrderItems] = useState<OrderItemType[]>([]);
   useEffect(() => {
     console.log("OrderPanel useEffect - activeOrder:", activeOrder);
@@ -117,7 +137,7 @@ export default function OrderPanel({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full max-h-screen">
       <div className="bg-accent p-4 border-b">
         <div className="flex items-center justify-between mb-2">
           <h2 className="font-semibold text-accent-foreground flex items-center">
@@ -141,10 +161,14 @@ export default function OrderPanel({
         </div>
         <div className="text-xs text-gray-600">
           <Clock className="h-3 w-3 inline mr-1" />
-          <span>{activeOrder ? `Đơn hàng: ${activeOrder.id} - ${new Date(activeOrder.createdAt).toLocaleTimeString('vi-VN')}` : "Chưa có đơn hàng"}</span>
+          <span>
+            {activeOrder
+              ? `Đơn hàng: ${activeOrder.id} - ${new Date(activeOrder.createdAt).toLocaleTimeString('vi-VN')}`
+              : "Chưa có đơn hàng"}
+          </span>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto max-h-[calc(100vh-350px)]">
         {orderItems.length === 0 ? (
           <div className="p-6 text-center">
             <div className="text-gray-400 mb-4">
@@ -160,16 +184,27 @@ export default function OrderPanel({
           </div>
         ) : (
           orderItems.map((item: OrderItemType, index: number) => (
-            <div key={item.id} className="p-2 border-b">
+            <div key={item.id} className="p-2 border-b relative">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex-1">
                   <div className="font-medium text-gray-800">
                     {index + 1}. {item.menuItemName}
                   </div>
-                  {item.note && <div className="text-xs text-gray-500">{item.note}</div>}
+                  {item.note && editingNoteItemId !== item.id && (
+                    <div className="text-xs text-gray-500">Ghi chú: {item.note}</div>
+                  )}
                 </div>
                 <div className="text-right flex items-center gap-2">
                   <div className="font-semibold text-gray-800">{formatVND(item.totalPrice)}</div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-gray-400 hover:text-blue-500 p-1"
+                    onClick={() => handleEditNote(item)}
+                    disabled={updateItemMutation.isPending}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -181,6 +216,31 @@ export default function OrderPanel({
                   </Button>
                 </div>
               </div>
+              {editingNoteItemId === item.id && (
+                <div className="mt-2 flex items-center gap-2">
+                  <Input
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                    placeholder="Nhập ghi chú (ví dụ: Không đá, Nóng...)"
+                    className="text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => handleSaveNote(item.id)}
+                    disabled={updateItemMutation.isPending}
+                  >
+                    Lưu
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCancelNote}
+                    disabled={updateItemMutation.isPending}
+                  >
+                    Hủy
+                  </Button>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <Button
@@ -212,8 +272,8 @@ export default function OrderPanel({
         )}
         {orderItems.length > 0 && (
           <div className="p-4">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full border-2 border-dashed border-gray-300 hover:border-primary hover:text-primary"
               onClick={onOpenMenu}
             >
@@ -239,7 +299,7 @@ export default function OrderPanel({
           </div>
         </div>
         <div className="space-y-2">
-          <Button 
+          <Button
             className="w-full bg-green-500 hover:bg-green-600 text-white py-3"
             onClick={onCheckout}
             disabled={orderItems.length === 0 || isCheckingOut}

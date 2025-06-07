@@ -344,7 +344,98 @@ export default function PosPage() {
     await completeOrderMutation.mutateAsync(activeOrder.id);
   };
 
-  const dailyRevenue = dailyRevenueData?.revenue ?? 0;
+  const handleAddMenuItemToOrder = async (menuItem: MenuItemType) => {
+    if (!selectedTableId) {
+      toast({
+        title: "Chưa chọn bàn",
+        description: "Vui lòng chọn bàn từ tab 'Phòng bàn' trước khi thêm món.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let currentOrderId = activeOrder?.id;
+    let currentTableName = activeOrder?.tableName;
+
+    if (!currentOrderId) {
+      const table = tables.find((t) => t.id === selectedTableId);
+      if (!table) {
+        toast({
+          title: "Lỗi",
+          description: "Không tìm thấy thông tin bàn.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      try {
+        const newOrder = await createOrderMutation.mutateAsync({
+          tableId: table.id,
+          tableName: table.name,
+          status: "active",
+          total: 0,
+        });
+        currentOrderId = newOrder.id;
+        currentTableName = newOrder.tableName;
+      } catch (error) {
+        console.error("Error creating order:", error);
+        toast({
+          title: "Lỗi tạo đơn",
+          description: "Không thể tạo đơn hàng mới.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    // Check if the menu item already exists in the order
+    const existingItem = activeOrder?.items.find(
+      (item) => item.menuItemId === menuItem.id && !item.note // Only match items without notes
+    );
+
+    if (existingItem) {
+      // Update existing item's quantity
+      const newQuantity = existingItem.quantity + 1;
+      try {
+        await apiRequest("PUT", `/api/order-items/${existingItem.id}`, {
+          quantity: newQuantity,
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["/api/tables", selectedTableId, "active-order"],
+        });
+        toast({
+          title: "Cập nhật món thành công",
+          description: `Đã tăng số lượng món ${menuItem.name} lên ${newQuantity}.`,
+        });
+      } catch (error) {
+        console.error("Error updating item quantity:", error);
+        toast({
+          title: "Lỗi cập nhật món",
+          description: "Không thể cập nhật số lượng món.",
+          variant: "destructive",
+        });
+      }
+    } else {
+      // Add new item
+      const orderItem: Partial<OrderItemType> = {
+        orderId: currentOrderId,
+        menuItemId: menuItem.id,
+        menuItemName: menuItem.name,
+        quantity: 1,
+        unitPrice: menuItem.price,
+        totalPrice: menuItem.price,
+        note: "",
+      };
+
+      await addItemMutation.mutateAsync({
+        orderId: currentOrderId,
+        item: orderItem,
+      });
+    }
+  };
+
+  const categories = ["Đồ uống", "Đồ ăn", "Đồ ăn vặt", "Tráng miệng", "Món chính", "Khai vị"];
+  const selectedTableInfo = selectedTableId ? tables.find(t => t.id === selectedTableId) : null;
 
   const form = useForm<MenuItemFormData>({
     resolver: zodResolver(menuItemFormSchemaClient),
@@ -453,69 +544,6 @@ export default function PosPage() {
     }
   };
 
-  const handleAddMenuItemToOrder = async (menuItem: MenuItemType) => {
-    if (!selectedTableId) {
-      toast({
-        title: "Chưa chọn bàn",
-        description: "Vui lòng chọn bàn từ tab 'Phòng bàn' trước khi thêm món.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    let currentOrderId = activeOrder?.id;
-    let currentTableName = activeOrder?.tableName;
-
-    if (!currentOrderId) {
-      const table = tables.find((t) => t.id === selectedTableId);
-      if (!table) {
-        toast({
-          title: "Lỗi",
-          description: "Không tìm thấy thông tin bàn.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      try {
-        const newOrder = await createOrderMutation.mutateAsync({
-          tableId: table.id,
-          tableName: table.name,
-          status: "active",
-          total: 0,
-        });
-        currentOrderId = newOrder.id;
-        currentTableName = newOrder.tableName;
-      } catch (error) {
-        console.error("Error creating order:", error);
-        toast({
-          title: "Lỗi tạo đơn",
-          description: "Không thể tạo đơn hàng mới.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    const orderItem: Partial<OrderItemType> = {
-      orderId: currentOrderId,
-      menuItemId: menuItem.id,
-      menuItemName: menuItem.name,
-      quantity: 1,
-      unitPrice: menuItem.price,
-      totalPrice: menuItem.price,
-      note: "",
-    };
-
-    await addItemMutation.mutateAsync({
-      orderId: currentOrderId,
-      item: orderItem,
-    });
-  };
-
-  const categories = ["Đồ uống", "Đồ ăn", "Đồ ăn vặt", "Tráng miệng", "Món chính", "Khai vị"];
-  const selectedTableInfo = selectedTableId ? tables.find(t => t.id === selectedTableId) : null;
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-primary text-primary-foreground p-4 shadow-lg">
@@ -565,7 +593,7 @@ export default function PosPage() {
                 onTableSelect={handleTableSelect}
               />
             </div>
-            <div className="w-96 bg-white border-l border-gray-200 shrink-0">
+            <div className="w-96 bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
               {isLoadingCurrentOrder || isFetchingCurrentOrder ? (
                 <div className="p-4 text-center text-gray-500">Đang tải đơn hàng</div>
               ) : (
@@ -641,7 +669,7 @@ export default function PosPage() {
                   <TabsTrigger value="view-items">Xem thực đơn</TabsTrigger>
                   <TabsTrigger value="manage-items">Quản lý món ăn</TabsTrigger>
                 </TabsList>
-                <TabsContent value="view-items" className="overflow-y-auto max-h-[calc(100vh-400px)] p-2">
+                <TabsContent value="view-items" className="h-[calc(100vh-350px)] overflow-y-auto p-2">
                   {isLoadingMenuItems ? (
                     <div className="text-center p-8 text-gray-500">Đang tải món ăn...</div>
                   ) : menuItems.length === 0 ? (
@@ -672,7 +700,7 @@ export default function PosPage() {
                     </div>
                   )}
                 </TabsContent>
-                <TabsContent value="manage-items" className="overflow-y-auto max-h-[calc(100vh-350px)] p-2">
+                <TabsContent value="manage-items" className="h-[calc(100vh-150px)] overflow-y-auto p-2">
                   <div className="mb-6">
                     <Button
                       onClick={() => {
@@ -916,7 +944,7 @@ export default function PosPage() {
                 </TabsContent>
               </Tabs>
             </div>
-            <div className="w-96 bg-white border-l border-gray-200 shrink-0">
+            <div className="w-96 bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
               {isLoadingCurrentOrder || isFetchingCurrentOrder ? (
                 <div className="p-4 text-center text-gray-500">Đang tải đơn hàng...</div>
               ) : (
@@ -945,7 +973,7 @@ export default function PosPage() {
           </div>
         </div>
         <div className="flex items-center space-x-4">
-          <span>Doanh thu: <strong>{formatVND(dailyRevenue)}</strong> {isLoadingDailyRevenue && <span className="text-xs opacity-75 ml-1">(Đang tải...)</span>}</span>
+          <span>Doanh thu: <strong>{formatVND(dailyRevenueData?.revenue ?? 0)}</strong> {isLoadingDailyRevenue && <span className="text-xs opacity-75 ml-1">(Đang tải...)</span>}</span>
           <Button
             variant="ghost"
             size="sm"
