@@ -551,15 +551,15 @@ export default function PosPage() {
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               <Utensils className="h-6 w-6" />
-              <h1 className="text-xl font-bold">KiotViet Bar</h1>
+              <h1 className="text-xl font-bold">35mm Cà Phê</h1>
             </div>
             <nav className="hidden md:flex space-x-6">
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'tables' | 'menu')} className="header-tabs">
-                <TabsList className="bg-white bg-opacity-20">
-                  <TabsTrigger value="tables" onClick={handleGoToTablesTab} className="data-[state=active]:bg-white data-[state=active]:text-primary">
+                <TabsList className="bg-white bg-opacity-0">
+                  <TabsTrigger value="tables" onClick={handleGoToTablesTab} className="bg-white bg-opacity-0 text-white hover:bg-opacity-30">
                     <TableIcon className="h-4 w-4 mr-2" /> Phòng bàn
                   </TabsTrigger>
-                  <TabsTrigger value="menu" onClick={handleGoToMenuTab} className="data-[state=active]:bg-white data-[state=active]:text-primary">
+                  <TabsTrigger value="menu" onClick={handleGoToMenuTab} className="bg-white bg-opacity-0 text-white hover:bg-opacity-30">
                     <ShoppingCart className="h-4 w-4 mr-2" /> Thực đơn
                   </TabsTrigger>
                 </TabsList>
@@ -568,13 +568,13 @@ export default function PosPage() {
           </div>
           <div className="flex items-center space-x-4">
             <div className="text-right text-sm">
-              <div className="opacity-90">Admin</div>
-              <div className="opacity-75 text-xs">Phiên bản 2.6.1</div>
+              <div className="opacity-90">Quản lý</div>
+              <div className="opacity-75 text-xs">Ver 1.0</div>
             </div>
             <Button
               variant="ghost"
               size="sm"
-              className="bg-white bg-opacity-20 hover:bg-opacity-30"
+              className="bg-white bg-opacity-0 hover:bg-opacity-50"
               onClick={() => setIsAdminOpen(true)}
             >
               <Settings className="h-4 w-4" />
@@ -963,14 +963,6 @@ export default function PosPage() {
 
       <div className="bg-primary text-primary-foreground px-4 py-2 flex items-center justify-between text-sm">
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <Phone className="h-4 w-4 text-green-400" />
-            <span>Lẫn bay 6929</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <MessageCircle className="h-4 w-4 text-blue-400" />
-            <span>Ghi chân chích</span>
-          </div>
         </div>
         <div className="flex items-center space-x-4">
           <span>Doanh thu: <strong>{formatVND(dailyRevenueData?.revenue ?? 0)}</strong> {isLoadingDailyRevenue && <span className="text-xs opacity-75 ml-1">(Đang tải...)</span>}</span>

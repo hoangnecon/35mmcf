@@ -1,4 +1,3 @@
-// client/src/components/table-grid.tsx
 import { Table, Crown, ShoppingBag, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import TableManagementMenu from "@/components/table-management-menu";
@@ -102,14 +101,6 @@ export default function TableGrid({ tables, selectedTableId, onTableSelect }: Ta
             <div className="text-sm font-medium mt-2">{table.name}</div>
           </div>
         ))}
-      </div>
-
-      {/* Quick Order Section */}
-      <div className="mt-6 bg-white rounded-lg p-4 shadow-sm">
-        <div className="flex items-center mb-3">
-          <div className="w-2 h-2 bg-primary rounded-full mr-2"></div>
-          <span className="text-sm text-gray-600">Mở thực đơn khi chọn bàn</span>
-        </div>
       </div>
     </div>
   );

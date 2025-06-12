@@ -9,14 +9,13 @@ import {
   Plus, 
   Minus, 
   Trash2, 
-  Crown,
-  ArrowUp10,
   Clock,
   CheckCircle,
   Printer,
   Bell,
   X,
-  Edit
+  Edit,
+  NotebookPen
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { OrderType, OrderItem as OrderItemType } from "@shared/schema";
@@ -142,17 +141,11 @@ export default function OrderPanel({
         <div className="flex items-center justify-between mb-2">
           <h2 className="font-semibold text-accent-foreground flex items-center">
             <Table className="h-4 w-4 mr-2" />
-            <span>{selectedTable.name} / Lầu 3</span>
+            <span>{selectedTable.name}</span>
           </h2>
           <div className="flex space-x-2">
             <Button variant="ghost" size="sm" className="text-accent-foreground hover:bg-blue-100 p-1">
-              <ArrowUp10 className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" className="text-accent-foreground hover:bg-blue-100 p-1">
-              <Crown className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" className="text-accent-foreground hover:bg-blue-100 p-1">
-              <Plus className="h-4 w-4" />
+              <NotebookPen className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="sm" className="text-accent-foreground hover:bg-blue-100 p-1">
               <Trash2 className="h-4 w-4" />
@@ -305,7 +298,7 @@ export default function OrderPanel({
             disabled={orderItems.length === 0 || isCheckingOut}
           >
             <CheckCircle className="h-4 w-4 mr-2" />
-            {isCheckingOut ? "Đang thanh toán..." : "Thanh toán (F9)"}
+            {isCheckingOut ? "Đang thanh toán..." : "Thanh toán"}
           </Button>
           <div className="grid grid-cols-2 gap-2">
             <Button variant="default" size="sm">
@@ -314,7 +307,7 @@ export default function OrderPanel({
             </Button>
             <Button variant="secondary" size="sm" className="bg-orange-500 hover:bg-orange-600 text-white">
               <Bell className="h-3 w-3 mr-1" />
-              Thông báo (F10)
+              Thông báo
             </Button>
           </div>
         </div>
