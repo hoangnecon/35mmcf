@@ -10,7 +10,7 @@ import {
   insertMenuCollectionSchema,
   type Order as OrderType,
   type OrderItem as OrderItemType,
-  type Bill as BillType, // Thêm import cho BillType
+  type Bill as BillType,
 } from "@shared/schema";
 import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
@@ -232,23 +232,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/orders/:id/complete", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const order = await storage.completeOrder(id); // Hàm completeOrder đã được chỉnh sửa để tạo bill
+      const order = await storage.completeOrder(id);
 
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
-
-      // Loại bỏ logic syncOrderToGoogleSheets ở đây
-      // try {
-      //   const orderItems = await storage.getOrderItems(order.id);
-      //   await syncOrderToGoogleSheets(order, orderItems);
-      // } catch (syncError) {
-      //   console.error("Failed to sync to Google Sheets after order completion:", syncError);
-      // }
       res.json(order);
     } catch (error) {
       console.error("Failed to complete order:", error);
       res.status(500).json({ message: "Failed to complete order" });
+    }
+  });
+
+  // THÊM ROUTE CẬP NHẬT GHI CHÚ ĐƠN HÀNG (NOTE CHO BÀN)
+  app.put("/api/orders/:id/note", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { note } = req.body;
+
+      if (typeof note !== 'string' && note !== null) {
+        return res.status(400).json({ message: "Invalid note format. Must be a string or null." });
+      }
+
+      const updatedOrder = await storage.updateOrderNote(id, note);
+      if (!updatedOrder) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      res.json(updatedOrder);
+    } catch (error) {
+      console.error("Failed to update order note:", error);
+      res.status(500).json({ message: "Failed to update order note" });
+    }
+  });
+
+  // THÊM ROUTE HỦY ĐƠN HÀNG
+  app.put("/api/orders/:orderId/cancel", async (req, res) => {
+    try {
+      const orderId = parseInt(req.params.orderId);
+      const { tableId } = req.body; // tableId là cần thiết để cập nhật trạng thái bàn
+
+      if (isNaN(orderId) || isNaN(tableId)) {
+        return res.status(400).json({ message: "Invalid orderId or tableId" });
+      }
+
+      const success = await storage.cancelOrder(orderId, tableId);
+      if (!success) {
+        return res.status(404).json({ message: "Order not found or could not be cancelled" });
+      }
+      res.json({ success: true, message: "Order cancelled successfully." });
+    } catch (error) {
+      console.error("Failed to cancel order:", error);
+      res.status(500).json({ message: "Failed to cancel order" });
     }
   });
 
@@ -322,7 +356,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const updateSchema = z.object({
         quantity: z.number().min(1).optional(),
-        note: z.string().optional(),
+        note: z.string().nullable().optional(), // note now can be null
       }).partial();
 
       const validatedUpdates = updateSchema.parse(req.body);

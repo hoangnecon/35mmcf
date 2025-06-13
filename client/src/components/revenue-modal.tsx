@@ -48,10 +48,6 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                 <Calendar className="h-4 w-4 mr-2" />
                 Hôm nay
               </Button>
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white hover:bg-opacity-20">
-                <Download className="h-4 w-4 mr-2" />
-                Xuất Excel
-              </Button>
               <Button variant="ghost" size="sm" onClick={onClose} className="text-white hover:bg-white hover:bg-opacity-20">
                 <X className="h-4 w-4" />
               </Button>

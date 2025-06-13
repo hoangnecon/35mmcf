@@ -1,13 +1,13 @@
 // server/storage.ts
 import {
-  tables, menuItems, orders, orderItems, menuCollections, bills, // Thêm bills vào import
+  tables, menuItems, orders, orderItems, menuCollections, bills,
   type Table, type InsertTable, type MenuItem, type InsertMenuItem,
   type Order, type InsertOrder, type OrderItem, type InsertOrderItem,
   type MenuCollection, type InsertMenuCollection,
-  type Bill, type InsertBill, // Thêm type cho Bill
+  type Bill, type InsertBill,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, sum } from "drizzle-orm"; // Thêm sum
+import { eq, and, sql, sum } from "drizzle-orm";
 
 export interface IStorage {
   getTables(): Promise<Table[]>;
@@ -36,15 +36,14 @@ export interface IStorage {
   updateOrderItem(id: number, updates: Partial<Omit<OrderItem, 'id' | 'orderId' | 'menuItemId' | 'menuItemName' | 'unitPrice'>>): Promise<OrderItem | undefined>;
   getOrderItem(id: number): Promise<OrderItem | undefined>;
   removeOrderItem(id: number): Promise<OrderItem | undefined>;
-  // Bỏ addSyncRecord và getSyncRecord vì không dùng Google Sheets nữa
-  // addSyncRecord(sync: InsertGoogleSheetsSync): Promise<GoogleSheetsSync>;
-  // getSyncRecord(orderId: number): Promise<GoogleSheetsSync | undefined>;
   getDailyRevenue(date?: Date): Promise<number>;
   getRevenueByTable(date?: Date): Promise<Array<{ tableName: string; orderCount: number; revenue: number }>>;
-  
-  // Thêm các hàm mới cho Bills
   createBill(bill: InsertBill): Promise<Bill>;
   getBills(startDate?: Date, endDate?: Date): Promise<Bill[]>;
+
+  // THÊM CÁC PHƯƠNG THỨC MỚI
+  updateOrderNote(orderId: number, note: string | null): Promise<Order | undefined>;
+  cancelOrder(orderId: number, tableId: number): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -74,15 +73,13 @@ export class MemStorage implements IStorage {
   async addOrderItem(item: InsertOrderItem): Promise<OrderItem> { throw new Error("Not implemented"); }
   async updateOrderItem(id: number, updates: Partial<Omit<OrderItem, 'id' | 'orderId' | 'menuItemId' | 'menuItemName' | 'unitPrice'>>): Promise<OrderItem | undefined> { throw new Error("Not implemented"); }
   async removeOrderItem(id: number): Promise<OrderItem | undefined> { throw new Error("Not implemented"); }
-  // Bỏ MemStorage của GoogleSheetsSync
-  // async addSyncRecord(sync: InsertGoogleSheetsSync): Promise<GoogleSheetsSync> { throw new Error("Not implemented"); }
-  // async getSyncRecord(orderId: number): Promise<GoogleSheetsSync | undefined> { return undefined; }
   async getDailyRevenue(date?: Date): Promise<number> { return 0; }
   async getRevenueByTable(date?: Date): Promise<Array<{ tableName: string; orderCount: number; revenue: number }>> { return []; }
-  
-  // Thêm MemStorage cho Bills
   async createBill(bill: InsertBill): Promise<Bill> { throw new Error("Method not implemented."); }
   async getBills(startDate?: Date, endDate?: Date): Promise<Bill[]> { return []; }
+  // THÊM CÁC PHƯƠNG THỨC MỚI VÀO MEMSTORAGE
+  async updateOrderNote(orderId: number, note: string | null): Promise<Order | undefined> { throw new Error("Method not implemented."); }
+  async cancelOrder(orderId: number, tableId: number): Promise<boolean> { throw new Error("Method not implemented."); }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -168,6 +165,10 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     if (completedOrder) {
+      // Cập nhật trạng thái bàn thành 'available'
+      await this.updateTableStatus(completedOrder.tableId, 'available');
+      console.log(`DatabaseStorage: Table ${completedOrder.tableId} status updated to available.`);
+
       // Tạo một bản ghi trong bảng `bills` sau khi order hoàn tất
       const newBillData: InsertBill = {
         orderId: completedOrder.id,
@@ -181,6 +182,49 @@ export class DatabaseStorage implements IStorage {
     }
     return completedOrder;
   }
+
+  // THÊM PHƯƠNG THỨC updateOrderNote
+  async updateOrderNote(orderId: number, note: string | null): Promise<Order | undefined> {
+    const [updatedOrder] = await db
+      .update(orders)
+      .set({ note, updatedAt: sql`CURRENT_TIMESTAMP` })
+      .where(eq(orders.id, orderId))
+      .returning();
+    return updatedOrder;
+  }
+
+  // THÊM PHƯƠNG THỨC cancelOrder
+  async cancelOrder(orderId: number, tableId: number): Promise<boolean> {
+    try {
+      // Xóa tất cả các orderItems liên quan đến đơn hàng
+      await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
+      console.log(`Deleted order items for order ${orderId}`);
+
+      // Cập nhật trạng thái đơn hàng thành 'cancelled'
+      const [cancelledOrder] = await db
+        .update(orders)
+        .set({
+          status: 'cancelled',
+          total: 0, // Đặt lại tổng tiền về 0
+          completedAt: new Date().toISOString(), // Ghi nhận thời gian hủy
+          updatedAt: sql`CURRENT_TIMESTAMP`
+        })
+        .where(eq(orders.id, orderId))
+        .returning();
+      
+      if (cancelledOrder) {
+        // Cập nhật trạng thái bàn thành 'available'
+        await this.updateTableStatus(tableId, 'available');
+        console.log(`Table ${tableId} status updated to available after order cancellation.`);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`Failed to cancel order ${orderId}:`, error);
+      return false;
+    }
+  }
+
   async getTables(): Promise<Table[]> { return await db.select().from(tables); }
   async getTable(id: number): Promise<Table | undefined> { const [table] = await db.select().from(tables).where(eq(tables.id, id)); return table; }
   async createTable(table: InsertTable): Promise<Table> { const [newTable] = await db.insert(tables).values(table).returning(); return newTable; }
@@ -201,17 +245,13 @@ export class DatabaseStorage implements IStorage {
   async getOrderById(id: number): Promise<Order | undefined> { const [order] = await db.select().from(orders).where(eq(orders.id, id)); return order; }
   async createOrder(order: InsertOrder): Promise<Order> { const [newOrder] = await db.insert(orders).values({ ...order, updatedAt: sql`CURRENT_TIMESTAMP` }).returning(); return newOrder; }
   async getOrderItems(orderId: number): Promise<OrderItem[]> { return await db.select().from(orderItems).where(eq(orderItems.orderId, orderId)); }
-  // Bỏ addSyncRecord và getSyncRecord khỏi DatabaseStorage
-  // async addSyncRecord(sync: InsertGoogleSheetsSync): Promise<GoogleSheetsSync> { const [newSync] = await db.insert(googleSheetsSync).values(sync).returning(); return newSync; }
-  // async getSyncRecord(orderId: number): Promise<GoogleSheetsSync | undefined> { const [record] = await db.select().from(googleSheetsSync).where(eq(googleSheetsSync.orderId, orderId)); return record; }
   
-  // Điều chỉnh getDailyRevenue để lấy từ bảng bills
   async getDailyRevenue(date?: Date): Promise<number> {
     const startOfDay = date ? new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString() : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).toISOString();
     const endOfDay = date ? new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).toISOString() : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1).toISOString();
 
     const result = await db
-      .select({ totalRevenue: sum(bills.totalAmount) }) // Sử dụng sum(bills.totalAmount)
+      .select({ totalRevenue: sum(bills.totalAmount) })
       .from(bills)
       .where(and(
         sql`${bills.createdAt} >= ${startOfDay}`,
@@ -220,16 +260,15 @@ export class DatabaseStorage implements IStorage {
     return result[0]?.totalRevenue || 0;
   }
 
-  // Điều chỉnh getRevenueByTable để lấy từ bảng bills
   async getRevenueByTable(date?: Date): Promise<Array<{ tableName: string; orderCount: number; revenue: number }>> {
     const startOfDay = date ? new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString() : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).toISOString();
     const endOfDay = date ? new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).toISOString() : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1).toISOString();
 
     const result = await db
       .select({
-        tableName: bills.tableName, // Lấy tableName từ bảng bills
-        orderCount: sql<number>`count(${bills.orderId})`, // Đếm số orderId từ bảng bills
-        revenue: sum(bills.totalAmount) // Tính tổng totalAmount từ bảng bills
+        tableName: bills.tableName,
+        orderCount: sql<number>`count(${bills.orderId})`,
+        revenue: sum(bills.totalAmount)
       })
       .from(bills)
       .where(and(
@@ -241,7 +280,6 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  // Thêm các hàm mới cho Bills
   async createBill(bill: InsertBill): Promise<Bill> {
     const [newBill] = await db.insert(bills).values(bill).returning();
     return newBill;
