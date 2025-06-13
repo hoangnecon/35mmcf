@@ -36,7 +36,7 @@ interface BillWithDetails extends any {
 export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueModalProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialDate || new Date()); // Sử dụng initialDate
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState<'all' | 'Tiền mặt' | 'Chuyển khoản' | 'Thẻ'>('all');
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<'all' | 'Tiền mặt' | 'Chuyển khoản' >('all');
   const [selectedBillDetails, setSelectedBillDetails] = useState<BillWithDetails | null>(null);
 
   // Cập nhật selectedDate khi initialDate thay đổi hoặc khi modal mở
@@ -46,15 +46,6 @@ export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueMo
     }
   }, [isOpen, initialDate]);
 
-
-  // Helper function: Lấy chuỗi ISO UTC đại diện cho bắt đầu ngày cục bộ được chọn
-  // Cách này dựa vào việc new Date() với các tham số năm/tháng/ngày sẽ tạo ra một đối tượng Date ở múi giờ cục bộ
-  // và toISOString() sẽ chuyển đổi nó sang UTC tương ứng.
-  // const getUtcIsoStringForLocalDayStart = (date: Date | undefined) => { // Đã di chuyển ra utils.ts
-  //   if (!date) return undefined;
-  //   const localDayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  //   return localDayStart.toISOString(); // Ví dụ: nếu local là GMT+7, 00:00:00 13/06 local sẽ là 17:00:00 12/06 UTC
-  // }
 
   // Helper function: Lấy chuỗi ISO UTC đại diện cho bắt đầu ngày cục bộ TIẾP THEO
   const getUtcIsoStringForNextLocalDayStart = (date: Date | undefined) => {
@@ -232,7 +223,7 @@ export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueMo
                 <Label htmlFor="filter-payment-method" className="text-sm">Phương thức:</Label>
                 <Select
                   value={filterPaymentMethod}
-                  onValueChange={(value: 'all' | 'Tiền mặt' | 'Chuyển khoản' | 'Thẻ') => setFilterPaymentMethod(value)}
+                  onValueChange={(value: 'all' | 'Tiền mặt' | 'Chuyển khoản' ) => setFilterPaymentMethod(value)}
                 >
                   <SelectTrigger id="filter-payment-method" className="w-[150px] h-8">
                     <SelectValue placeholder="Tất cả" />
@@ -241,7 +232,6 @@ export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueMo
                     <SelectItem value="all">Tất cả</SelectItem>
                     <SelectItem value="Tiền mặt">Tiền mặt</SelectItem>
                     <SelectItem value="Chuyển khoản">Chuyển khoản</SelectItem>
-                    <SelectItem value="Thẻ">Thẻ</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
