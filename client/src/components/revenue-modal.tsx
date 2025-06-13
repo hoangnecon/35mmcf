@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { formatVND } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { X, Calendar, Download } from "lucide-react";
+import { X, Calendar, ArrowUpDown } from "lucide-react";
 
 interface RevenueModalProps {
   isOpen: boolean;
@@ -46,12 +46,11 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
             <DialogTitle className="text-lg font-semibold">Báo cáo doanh thu</DialogTitle>
             <div className="flex items-center space-x-2">
               <Button variant="ghost" size="sm" className="text-white hover:bg-white hover:bg-opacity-20">
-                <Calendar className="h-4 w-4 mr-2" />
-                Hôm nay
+                <ArrowUpDown className="h-4 w-4 mr-2" />
               </Button>
               <Button variant="ghost" size="sm" className="text-white hover:bg-white hover:bg-opacity-20">
-                <Download className="h-4 w-4 mr-2" />
-                Xuất Excel
+                <Calendar className="h-4 w-4 mr-2" />
+                Hôm nay
               </Button>
               <Button variant="ghost" size="sm" onClick={onClose} className="text-white hover:bg-white hover:bg-opacity-20">
                 <X className="h-4 w-4" />
