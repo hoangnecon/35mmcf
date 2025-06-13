@@ -1,4 +1,4 @@
-// server/storage.ts
+// hoangnecon/35mmcf/35mmcf-fa723ba3b9b96db36942ef1dc83a721ec6f65899/server/storage.ts
 import {
   tables, menuItems, orders, orderItems, menuCollections, bills,
   type Table, type InsertTable, type MenuItem, type InsertMenuItem,
@@ -7,7 +7,7 @@ import {
   type Bill, type InsertBill,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, sum, inArray } from "drizzle-orm"; // Thêm inArray để xóa nhiều item cùng lúc
+import { eq, and, sql, sum, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getTables(): Promise<Table[]>;
@@ -40,11 +40,11 @@ export interface IStorage {
   getRevenueByTable(date?: Date): Promise<Array<{ tableName: string; orderCount: number; revenue: number }>>;
   createBill(bill: InsertBill): Promise<Bill>;
   getBills(startDate?: Date, endDate?: Date): Promise<Bill[]>;
+  getBillById(id: number): Promise<Bill | undefined>;
 
   updateOrderNote(orderId: number, note: string | null): Promise<Order | undefined>;
   cancelOrder(orderId: number, tableId: number): Promise<boolean>;
 
-  // THÊM PHƯƠNG THỨC MỚI CHO THANH TOÁN MỘT PHẦN
   processPartialPayment(
     orderId: number,
     itemsToPay: { orderItemId: number; quantity: number }[],
@@ -54,6 +54,7 @@ export interface IStorage {
 }
 
 export class MemStorage implements IStorage {
+  async getBillById(id: number): Promise<Bill | undefined> { throw new Error("Method not implemented."); }
   async getOrderItem(id: number): Promise<OrderItem | undefined> { throw new Error("Method not implemented."); }
   async getTables(): Promise<Table[]> { return []; }
   async getTable(id: number): Promise<Table | undefined> { return undefined; }
@@ -86,7 +87,6 @@ export class MemStorage implements IStorage {
   async getBills(startDate?: Date, endDate?: Date): Promise<Bill[]> { return []; }
   async updateOrderNote(orderId: number, note: string | null): Promise<Order | undefined> { throw new Error("Method not implemented."); }
   async cancelOrder(orderId: number, tableId: number): Promise<boolean> { throw new Error("Method not implemented."); }
-  // THÊM PHƯƠNG THỨC MỚI VÀO MEMSTORAGE
   async processPartialPayment(
     orderId: number,
     itemsToPay: { orderItemId: number; quantity: number }[],
@@ -178,14 +178,11 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     if (completedOrder) {
-      // Cập nhật trạng thái bàn thành 'available'
       await this.updateTableStatus(completedOrder.tableId, 'available');
       console.log(`DatabaseStorage: Table ${completedOrder.tableId} status updated to available.`);
 
-      // Tính toán totalAmount cuối cùng sau khi áp dụng discount
       const finalAmount = completedOrder.total - discountAmount;
 
-      // Tạo một bản ghi trong bảng `bills` sau khi order hoàn tất
       const newBillData: InsertBill = {
         orderId: completedOrder.id,
         tableId: completedOrder.tableId,
@@ -199,7 +196,6 @@ export class DatabaseStorage implements IStorage {
     return completedOrder;
   }
 
-  // THÊM PHƯƠNG THỨC updateOrderNote
   async updateOrderNote(orderId: number, note: string | null): Promise<Order | undefined> {
     const [updatedOrder] = await db
       .update(orders)
@@ -209,27 +205,23 @@ export class DatabaseStorage implements IStorage {
     return updatedOrder;
   }
 
-  // THÊM PHƯƠNG THỨC cancelOrder
   async cancelOrder(orderId: number, tableId: number): Promise<boolean> {
     try {
-      // Xóa tất cả các orderItems liên quan đến đơn hàng
       await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
       console.log(`Deleted order items for order ${orderId}`);
 
-      // Cập nhật trạng thái đơn hàng thành 'cancelled'
       const [cancelledOrder] = await db
         .update(orders)
         .set({
           status: 'cancelled',
-          total: 0, // Đặt lại tổng tiền về 0
-          completedAt: new Date().toISOString(), // Ghi nhận thời gian hủy
+          total: 0,
+          completedAt: new Date().toISOString(),
           updatedAt: sql`CURRENT_TIMESTAMP`
         })
         .where(eq(orders.id, orderId))
         .returning();
 
       if (cancelledOrder) {
-        // Cập nhật trạng thái bàn thành 'available'
         await this.updateTableStatus(tableId, 'available');
         console.log(`Table ${tableId} status updated to available after order cancellation.`);
         return true;
@@ -241,33 +233,26 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // THÊM PHƯƠNG THỨC processPartialPayment
-  // Sửa lỗi: hàm transaction phải là đồng bộ. Các await bên trong sẽ được Drizzle xử lý đồng bộ.
   async processPartialPayment(
     orderId: number,
     itemsToPay: { orderItemId: number; quantity: number }[],
     paymentMethod: string,
     partialDiscountAmount: number
   ): Promise<Order | undefined> {
-    // Đảm bảo hàm callback của transaction là đồng bộ (bỏ async)
     return db.transaction((tx) => {
-      // 1. Lấy thông tin đơn hàng gốc
-      const [originalOrder] = tx.select().from(orders).where(eq(orders.id, orderId)).all(); // .all() để lấy kết quả synchronous
+      const [originalOrder] = tx.select().from(orders).where(eq(orders.id, orderId)).all();
       if (!originalOrder) {
         throw new Error(`Order with ID ${orderId} not found.`);
       }
 
-      // 2. Lấy tất cả orderItems của đơn hàng gốc
-      const currentOrderItems = tx.select().from(orderItems).where(eq(orderItems.orderId, orderId)).all(); // .all() để lấy kết quả synchronous
+      const currentOrderItems = tx.select().from(orderItems).where(eq(orderItems.orderId, orderId)).all();
       
       let totalPartialPaymentAmount = 0;
       const itemsToDeleteIds: number[] = [];
 
-      // 3. Xử lý từng item trong itemsToPay
       for (const itemToPay of itemsToPay) {
         if (itemToPay.quantity <= 0) {
-            // Bỏ qua hoặc báo lỗi nếu số lượng là 0 hoặc âm
-            continue; 
+            continue;
         }
 
         const existingItem = currentOrderItems.find(item => item.id === itemToPay.orderItemId);
@@ -283,42 +268,35 @@ export class DatabaseStorage implements IStorage {
         totalPartialPaymentAmount += itemCost;
 
         if (existingItem.quantity === itemToPay.quantity) {
-          // Nếu số lượng thanh toán bằng số lượng hiện có, xóa item này
           itemsToDeleteIds.push(existingItem.id);
         } else {
-          // Nếu số lượng thanh toán ít hơn, cập nhật số lượng và tổng tiền của item
           const newQuantity = existingItem.quantity - itemToPay.quantity;
           const newTotalPrice = existingItem.unitPrice * newQuantity;
-          tx.update(orderItems).set({ quantity: newQuantity, totalPrice: newTotalPrice }).where(eq(orderItems.id, existingItem.id)).run(); // .run() để thực thi synchronous
+          tx.update(orderItems).set({ quantity: newQuantity, totalPrice: newTotalPrice }).where(eq(orderItems.id, existingItem.id)).run();
         }
       }
 
-      // 4. Xóa các item đã được thanh toán hết
       if (itemsToDeleteIds.length > 0) {
-        tx.delete(orderItems).where(inArray(orderItems.id, itemsToDeleteIds)).run(); // .run() để thực thi synchronous
+        tx.delete(orderItems).where(inArray(orderItems.id, itemsToDeleteIds)).run();
       }
 
-      // 5. Tính toán tổng tiền thực tế của partial payment sau khi trừ chiết khấu
       const finalPartialPaymentAmount = totalPartialPaymentAmount - partialDiscountAmount;
 
-      // 6. Tạo bill cho phần thanh toán này
       const newBillData: InsertBill = {
         orderId: originalOrder.id,
         tableId: originalOrder.tableId,
         tableName: originalOrder.tableName,
         totalAmount: finalPartialPaymentAmount,
         paymentMethod: paymentMethod,
-        createdAt: new Date().toISOString(), // Đảm bảo thời gian tạo bill
+        createdAt: new Date().toISOString(),
       };
-      tx.insert(bills).values(newBillData).run(); // .run() để thực thi synchronous
+      tx.insert(bills).values(newBillData).run();
 
-      // 7. Cập nhật tổng tiền của đơn hàng gốc
-      const remainingItems = tx.select().from(orderItems).where(eq(orderItems.orderId, orderId)).all(); // .all() để lấy kết quả synchronous
+      const remainingItems = tx.select().from(orderItems).where(eq(orderItems.orderId, orderId)).all();
       const newOrderTotal = remainingItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
       let newOrderStatus = originalOrder.status;
       if (remainingItems.length === 0) {
-        // Nếu không còn món nào, đơn hàng gốc hoàn tất
         newOrderStatus = 'completed';
       }
 
@@ -332,11 +310,10 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(orders.id, orderId))
         .returning()
-        .all(); // .all() để lấy kết quả synchronous cho returning
+        .all();
 
-      // Nếu đơn hàng gốc đã hoàn tất, cập nhật trạng thái bàn
       if (newOrderStatus === 'completed') {
-        tx.update(tables).set({ status: 'available' }).where(eq(tables.id, originalOrder.tableId)).run(); // .run() để thực thi synchronous
+        tx.update(tables).set({ status: 'available' }).where(eq(tables.id, originalOrder.tableId)).run();
       }
 
       return updatedOrder;
@@ -365,22 +342,30 @@ export class DatabaseStorage implements IStorage {
   async getOrderItems(orderId: number): Promise<OrderItem[]> { return await db.select().from(orderItems).where(eq(orderItems.orderId, orderId)); }
 
   async getDailyRevenue(date?: Date): Promise<number> {
-    const startOfDay = date ? new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString() : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).toISOString();
-    const endOfDay = date ? new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).toISOString() : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1).toISOString();
+    // 'date' parameter là một đối tượng Date UTC đại diện cho bắt đầu ngày cục bộ.
+    const startOfQueryRange = date ? date : new Date(new Date().toISOString().split('T')[0]); // Sử dụng Date object nhận được
+    const endOfQueryRange = new Date(startOfQueryRange.getTime() + 24 * 60 * 60 * 1000); // Thêm 24 giờ để có được bắt đầu ngày UTC tiếp theo
+
+    console.log(`[Storage] getDailyRevenue: Querying for received Date: ${date?.toISOString() || 'current UTC day'}`);
+    console.log(`[Storage] getDailyRevenue: UTC range: ${startOfQueryRange.toISOString()} to ${endOfQueryRange.toISOString()}`);
 
     const result = await db
       .select({ totalRevenue: sum(bills.totalAmount) })
       .from(bills)
       .where(and(
-        sql`${bills.createdAt} >= ${startOfDay}`,
-        sql`${bills.createdAt} < ${endOfDay}`
+        sql`${bills.createdAt} >= ${startOfQueryRange.toISOString()}`,
+        sql`${bills.createdAt} < ${endOfQueryRange.toISOString()}`
       ));
+    console.log(`[Storage] getDailyRevenue: Found ${result[0]?.totalRevenue || 0} revenue.`);
     return result[0]?.totalRevenue || 0;
   }
 
   async getRevenueByTable(date?: Date): Promise<Array<{ tableName: string; orderCount: number; revenue: number }>> {
-    const startOfDay = date ? new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString() : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).toISOString();
-    const endOfDay = date ? new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).toISOString() : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1).toISOString();
+    const startOfQueryRange = date ? date : new Date(new Date().toISOString().split('T')[0]);
+    const endOfQueryRange = new Date(startOfQueryRange.getTime() + 24 * 60 * 60 * 1000);
+
+    console.log(`[Storage] getRevenueByTable: Querying for received Date: ${date?.toISOString() || 'current UTC day'}`);
+    console.log(`[Storage] getRevenueByTable: UTC range: ${startOfQueryRange.toISOString()} to ${endOfQueryRange.toISOString()}`);
 
     const result = await db
       .select({
@@ -390,28 +375,41 @@ export class DatabaseStorage implements IStorage {
       })
       .from(bills)
       .where(and(
-        sql`${bills.createdAt} >= ${startOfDay}`,
-        sql`${bills.createdAt} < ${endOfDay}`
+        sql`${bills.createdAt} >= ${startOfQueryRange.toISOString()}`,
+        sql`${bills.createdAt} < ${endOfQueryRange.toISOString()}`
       ))
       .groupBy(bills.tableName)
       .orderBy(bills.tableName);
+    console.log(`[Storage] getRevenueByTable: Found ${result.length} entries.`);
     return result;
   }
 
   async createBill(bill: InsertBill): Promise<Bill> {
     const [newBill] = await db.insert(bills).values(bill).returning();
+    console.log(`[Storage] createBill: Created bill ${newBill.id} with createdAt ${newBill.createdAt}`);
     return newBill;
   }
 
-  async getBills(startDate?: Date, endDate?: Date): Promise<Bill[]> {
+  async getBills(startDateParam?: Date, endDateParam?: Date): Promise<Bill[]> {
     let query = db.select().from(bills);
-    if (startDate && endDate) {
+    if (startDateParam && endDateParam) {
+      // startDateParam và endDateParam là các đối tượng Date UTC đã được chuẩn hóa từ frontend.
+      console.log(`[Storage] getBills: Querying for received Dates: start=${startDateParam.toISOString()}, end=${endDateParam.toISOString()}`);
+      
       query = query.where(and(
-        sql`${bills.createdAt} >= ${startDate.toISOString()}`,
-        sql`${bills.createdAt} < ${endDate.toISOString()}`
+        sql`${bills.createdAt} >= ${startDateParam.toISOString()}`,
+        sql`${bills.createdAt} < ${endDateParam.toISOString()}`
       ));
     }
-    return await query;
+    const result = await query;
+    console.log(`[Storage] getBills: Found ${result.length} bills.`);
+    return result;
+  }
+
+  async getBillById(id: number): Promise<Bill | undefined> {
+    const [bill] = await db.select().from(bills).where(eq(bills.id, id));
+    console.log(`[Storage] getBillById: Found bill ${bill?.id || 'none'}.`);
+    return bill;
   }
 }
 

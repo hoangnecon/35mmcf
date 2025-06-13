@@ -1,4 +1,4 @@
-// server/routes.ts
+// hoangnecon/35mmcf/35mmcf-fa723ba3b9b96db36942ef1dc83a721ec6f65899/server/routes.ts
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
@@ -11,6 +11,10 @@ import {
   type Order as OrderType,
   type OrderItem as OrderItemType,
   type Bill as BillType,
+  // Thêm các import cần thiết từ schema để sử dụng trong route /api/bills/:id/items
+  orders, // Đảm bảo đã import nếu được sử dụng ở nơi khác
+  orderItems, // Đảm bảo đã import nếu được sử dụng ở nơi khác
+  menuItems, // Đảm bảo đã import nếu được sử dụng ở nơi khác
 } from "@shared/schema";
 import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
@@ -234,27 +238,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       let { paymentMethod, discountAmount } = req.body;
 
-      console.log(`[Backend] Received paymentMethod for order ${id}: '${paymentMethod}'`);
-      console.log(`[Backend] Received discountAmount for order ${id}: ${discountAmount}`);
+      console.log(`[Backend API] /api/orders/:id/complete: Received paymentMethod='${paymentMethod}', discount=${discountAmount} for order ${id}.`);
 
       if (typeof paymentMethod === 'string') {
         paymentMethod = paymentMethod.trim();
       }
 
       if (!paymentMethod || (paymentMethod !== 'Tiền mặt' && paymentMethod !== 'Chuyển khoản' && paymentMethod !== 'Thẻ')) {
-        console.warn(`[Backend] Invalid payment method after trim: '${paymentMethod}'`);
+        console.warn(`[Backend API] /api/orders/:id/complete: Invalid payment method after trim: '${paymentMethod}'`);
         return res.status(400).json({ message: "Invalid payment method provided. Must be 'Tiền mặt', 'Thẻ' or 'Chuyển khoản'." });
       }
 
       if (typeof discountAmount !== 'number' || discountAmount < 0) {
-        console.warn(`[Backend] Invalid discount amount: '${discountAmount}'`);
+        console.warn(`[Backend API] /api/orders/:id/complete: Invalid discount amount: '${discountAmount}'`);
         return res.status(400).json({ message: "Invalid discount amount. Must be a non-negative number." });
       }
 
       const order = await storage.completeOrder(id, paymentMethod, discountAmount);
       if (!order) {
+        console.warn(`[Backend API] /api/orders/:id/complete: Order ${id} not found for completion.`);
         return res.status(404).json({ message: "Order not found" });
       }
+      console.log(`[Backend API] /api/orders/:id/complete: Order ${id} completed successfully.`);
       res.json(order);
     } catch (error) {
       console.error("Failed to complete order:", error);
@@ -262,7 +267,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // CẬP NHẬT ROUTE CẬP NHẬT GHI CHÚ ĐƠN HÀNG (NOTE CHO BÀN)
   app.put("/api/orders/:id/note", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -290,8 +294,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-
-  // CẬP NHẬT ROUTE HỦY ĐƠN HÀNG
   app.put("/api/orders/:orderId/cancel", async (req, res) => {
     try {
       const orderId = parseInt(req.params.orderId);
@@ -357,7 +359,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.addOrderItem(itemToAdd);
 
-      // Fetch the updated order and its items to send back
       const updatedOrder = await storage.getOrderById(orderId);
       if (!updatedOrder) {
         return res.status(404).json({ message: "Order not found after adding item" });
@@ -382,7 +383,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const updateSchema = z.object({
         quantity: z.number().min(1).optional(),
-        note: z.string().nullable().optional(), // note now can be null
+        note: z.string().nullable().optional(),
       }).partial();
 
       const validatedUpdates = updateSchema.parse(req.body);
@@ -441,7 +442,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // THÊM ROUTE CHO THANH TOÁN MỘT PHẦN
   app.post("/api/orders/:orderId/partial-payment", async (req, res) => {
     try {
       const orderId = parseInt(req.params.orderId);
@@ -467,16 +467,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-
   // Revenue (sẽ lấy từ bảng bills)
   app.get("/api/revenue/daily", async (req, res) => {
     try {
       const dateString = req.query.date as string | undefined;
-      const date = dateString ? new Date(dateString) : new Date();
+      const date = dateString ? new Date(dateString) : new Date(); // Parse directly to Date object (will be UTC)
       if (isNaN(date.getTime())) {
         return res.status(400).json({ message: "Invalid date format" });
       }
-      const revenue = await storage.getDailyRevenue(date);
+      console.log(`[Backend API] /api/revenue/daily: Received dateString='${dateString}', parsedDate=${date.toISOString()}.`);
+      const revenue = await storage.getDailyRevenue(date); // Pass the UTC Date object
+      console.log(`[Backend API] /api/revenue/daily: Returning revenue: ${revenue}.`);
       res.json({ revenue });
     } catch (error) {
       console.error("Failed to fetch daily revenue:", error);
@@ -487,11 +488,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/revenue/by-table", async (req, res) => {
     try {
       const dateString = req.query.date as string | undefined;
-      const date = dateString ? new Date(dateString) : new Date();
+      const date = dateString ? new Date(dateString) : new Date(); // Parse directly to Date object (will be UTC)
       if (isNaN(date.getTime())) {
         return res.status(400).json({ message: "Invalid date format" });
       }
-      const revenueByTable = await storage.getRevenueByTable(date);
+      console.log(`[Backend API] /api/revenue/by-table: Received dateString='${dateString}', parsedDate=${date.toISOString()}.`);
+      const revenueByTable = await storage.getRevenueByTable(date); // Pass the UTC Date object
+      console.log(`[Backend API] /api/revenue/by-table: Returning ${revenueByTable.length} entries.`);
       res.json(revenueByTable);
     } catch (error) {
       console.error("Failed to fetch revenue by table:", error);
@@ -502,28 +505,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Thêm route để lấy danh sách các bill đã hoàn thành (nếu cần cho báo cáo chi tiết hơn)
   app.get("/api/bills", async (req, res) => {
     try {
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate } = req.query; // These are now full ISO strings
       let start: Date | undefined;
       let end: Date | undefined;
 
       if (startDate) {
-        start = new Date(startDate as string);
+        start = new Date(startDate as string); // Parse directly to Date object (will be UTC)
         if (isNaN(start.getTime())) {
           return res.status(400).json({ message: "Invalid startDate format" });
         }
       }
       if (endDate) {
-        end = new Date(endDate as string);
+        end = new Date(endDate as string); // Parse directly to Date object (will be UTC)
         if (isNaN(end.getTime())) {
           return res.status(400).json({ message: "Invalid endDate format" });
         }
       }
-
-      const bills = await storage.getBills(start, end);
+      console.log(`[Backend API] /api/bills: Received startDate='${startDate}', endDate='${endDate}'.`);
+      const bills = await storage.getBills(start, end); // Pass the UTC Date objects
+      console.log(`[Backend API] /api/bills: Returning ${bills.length} bills.`);
       res.json(bills);
     } catch (error) {
       console.error("Failed to fetch bills:", error);
       res.status(500).json({ message: "Failed to fetch bills" });
+    }
+  });
+
+  // THÊM ROUTE MỚI: Lấy chi tiết các món trong một bill
+  app.get("/api/bills/:id/items", async (req, res) => {
+    try {
+      const billId = parseInt(req.params.id);
+      if (isNaN(billId)) {
+        console.warn(`[Backend API] /api/bills/:id/items: Invalid bill ID received: ${req.params.id}`);
+        return res.status(400).json({ message: "Invalid bill ID" });
+      }
+
+      const bill = await storage.getBillById(billId);
+      if (!bill) {
+        console.warn(`[Backend API] /api/bills/:id/items: Bill not found for ID: ${billId}`);
+        return res.status(404).json({ message: "Bill not found" });
+      }
+
+      const orderItems = await storage.getOrderItems(bill.orderId);
+      console.log(`[Backend API] /api/bills/:id/items: Found ${orderItems.length} items for bill ${billId} (orderId ${bill.orderId}).`);
+
+      res.json(orderItems);
+    } catch (error) {
+      console.error("Failed to fetch items for bill:", error);
+      res.status(500).json({ message: "Failed to fetch items for bill" });
     }
   });
 
