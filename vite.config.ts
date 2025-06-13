@@ -34,7 +34,4 @@ export default defineConfig({
       deny: ["**/.*"],
     },
   },
-  optimizeDeps: {
-    exclude: ['date-fns-tz'],
-  },
 });

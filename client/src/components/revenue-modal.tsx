@@ -198,34 +198,6 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
               </p>
             </div>
           </div>
-
-          {chartData.length > 0 && (
-            <div className="mb-6 bg-white p-4 rounded-lg shadow-sm">
-              <h3 className="text-lg font-semibold mb-4">Doanh thu theo bàn</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="table"
-                    angle={-45}
-                    textAnchor="end"
-                    height={60}
-                    fontSize={12}
-                  />
-                  <YAxis
-                    tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
-                    fontSize={12}
-                  />
-                  <Tooltip
-                    formatter={(value: any) => [formatVND(value), "Doanh thu"]}
-                    labelFormatter={(label) => `Bàn: ${label}`}
-                  />
-                  <Bar dataKey="revenue" fill="hsl(207 90% 27%)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Chi tiết đơn hàng đã thanh toán</h3>
