@@ -35,7 +35,7 @@ interface BillWithDetails extends any {
 export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState<'all' | 'Tiền mặt' | 'Chuyển khoản' | 'Thẻ'>('all');
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<'all' | 'Tiền mặt' | 'Chuyển khoản' >('all');
   const [selectedBillDetails, setSelectedBillDetails] = useState<BillWithDetails | null>(null);
 
   // Helper function: Lấy chuỗi ISO UTC đại diện cho bắt đầu ngày cục bộ được chọn
@@ -205,7 +205,7 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                 <Label htmlFor="filter-payment-method" className="text-sm">Phương thức:</Label>
                 <Select
                   value={filterPaymentMethod}
-                  onValueChange={(value: 'all' | 'Tiền mặt' | 'Chuyển khoản' | 'Thẻ') => setFilterPaymentMethod(value)}
+                  onValueChange={(value: 'all' | 'Tiền mặt' | 'Chuyển khoản' ) => setFilterPaymentMethod(value)}
                 >
                   <SelectTrigger id="filter-payment-method" className="w-[150px] h-8">
                     <SelectValue placeholder="Tất cả" />
@@ -214,7 +214,6 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                     <SelectItem value="all">Tất cả</SelectItem>
                     <SelectItem value="Tiền mặt">Tiền mặt</SelectItem>
                     <SelectItem value="Chuyển khoản">Chuyển khoản</SelectItem>
-                    <SelectItem value="Thẻ">Thẻ</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
