@@ -11,13 +11,15 @@ import {
   type Order as OrderType,
   type OrderItem as OrderItemType,
   type Bill as BillType,
-  // Thêm các import cần thiết từ schema để sử dụng trong route /api/bills/:id/items
-  orders, // Đảm bảo đã import nếu được sử dụng ở nơi khác
-  orderItems, // Đảm bảo đã import nếu được sử dụng ở nơi khác
-  menuItems, // Đảm bảo đã import nếu được sử dụng ở nơi khác
+  orders,
+  orderItems,
+  menuItems,
 } from "@shared/schema";
 import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
+import ExcelJS from 'exceljs';
+import { format } from 'date-fns';
+import { formatVND } from "@shared/utils"; // THAY ĐỔI DÒNG NÀY
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Tables
@@ -553,6 +555,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Failed to fetch items for bill:", error);
       res.status(500).json({ message: "Failed to fetch items for bill" });
+    }
+  });
+
+  // THÊM ROUTE MỚI: Xuất Excel
+  app.get("/api/reports/export-bills", async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query; // Nhận các tham số ngày tháng (ISO strings)
+      let start: Date | undefined;
+      let end: Date | undefined;
+
+      if (startDate) {
+        start = new Date(startDate as string);
+        if (isNaN(start.getTime())) {
+          return res.status(400).json({ message: "Invalid startDate format" });
+        }
+      }
+      if (endDate) {
+        end = new Date(endDate as string);
+        if (isNaN(end.getTime())) {
+          return res.status(400).json({ message: "Invalid endDate format" });
+        }
+      }
+
+      console.log(`[Backend API] /api/reports/export-bills: Exporting bills from ${start?.toISOString()} to ${end?.toISOString()}.`);
+
+      const billsToExport = await storage.getBills(start, end);
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Bao cao doanh thu');
+
+      // Định nghĩa các cột cho Excel
+      worksheet.columns = [
+        { header: 'ID Bill', key: 'id', width: 10 },
+        { header: 'ID Đơn hàng', key: 'orderId', width: 15 },
+        { header: 'Tên Bàn', key: 'tableName', width: 15 },
+        { header: 'Phương thức TT', key: 'paymentMethod', width: 15 },
+        { header: 'Tổng tiền', key: 'totalAmount', width: 15, style: { numFmt: '#,##0' } }, // Định dạng số tiền
+        { header: 'Thời gian hoàn tất', key: 'createdAt', width: 25 },
+      ];
+
+      // Thêm dữ liệu vào các hàng
+      for (const bill of billsToExport) {
+        worksheet.addRow({
+          id: bill.id,
+          orderId: bill.orderId,
+          tableName: bill.tableName,
+          paymentMethod: bill.paymentMethod,
+          totalAmount: bill.totalAmount,
+          createdAt: new Date(bill.createdAt).toLocaleString('vi-VN'), // Định dạng thời gian
+        });
+      }
+
+      // Đặt các header phản hồi để trình duyệt biết đây là file Excel
+      console.log('[Backend API] Setting Content-Type and Content-Disposition headers (via writeHead).');
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="BaoCaoDoanhThu_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx"`
+      });
+
+      // Ghi workbook vào stream phản hồi
+      await workbook.xlsx.write(res);
+      res.end(); // Kết thúc phản hồi
+      console.log('[Backend API] Excel file generated and sent successfully.');
+    } catch (error) {
+      console.error("Failed to export bills to Excel:", error);
+      // Đảm bảo gửi phản hồi lỗi phù hợp nếu có lỗi xảy ra trước khi headers được gửi
+      if (!res.headersSent) {
+          res.status(500).json({ message: "Failed to export bills to Excel" });
+      } else {
+          // Nếu headers đã được gửi (ví dụ: một phần file đã được ghi), chỉ log lỗi và kết thúc
+          res.end();
+      }
     }
   });
 

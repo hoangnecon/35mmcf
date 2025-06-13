@@ -8,12 +8,12 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { X, Calendar, Download } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { format, addDays, startOfDay } from "date-fns"; // Đảm bảo import startOfDay
+import { format, addDays, startOfDay, isSameDay } from "date-fns"; // Đảm bảo import isSameDay
 import { vi } from 'date-fns/locale';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-// KHÔNG CẦN IMPORT zonedTimeToUtc TỪ date-fns-tz NỮA
+// KHÔNG CẦN IMPORT zonedTimeToUtc TỪ ĐÂY NỮA
 
 interface RevenueModalProps {
   isOpen: boolean;
@@ -35,7 +35,7 @@ interface BillWithDetails extends any {
 export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState<'all' | 'Tiền mặt' | 'Chuyển khoản' >('all');
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<'all' | 'Tiền mặt' | 'Chuyển khoản' | 'Thẻ'>('all');
   const [selectedBillDetails, setSelectedBillDetails] = useState<BillWithDetails | null>(null);
 
   // Helper function: Lấy chuỗi ISO UTC đại diện cho bắt đầu ngày cục bộ được chọn
@@ -55,7 +55,7 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
   }
 
   const { data: revenueByTable = [] } = useQuery({
-    queryKey: ["/api/revenue/by-table", getUtcIsoStringForLocalDayStart(selectedDate)],
+    queryKey: ["/api/revenue/by-table", getUtcIsoStringForLocalDayStart(selectedDate)], // Truyền chuỗi ISO đầy đủ
     enabled: isOpen,
     queryFn: async ({ queryKey }) => {
       const dateParam = queryKey[1] ? `?date=${queryKey[1]}` : ''; // Server sẽ nhận chuỗi ISO đầy đủ
@@ -68,7 +68,7 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
   });
 
   const { data: dailyRevenueData } = useQuery({
-    queryKey: ["/api/revenue/daily", getUtcIsoStringForLocalDayStart(selectedDate)],
+    queryKey: ["/api/revenue/daily", getUtcIsoStringForLocalDayStart(selectedDate)], // Truyền chuỗi ISO đầy đủ
     enabled: isOpen,
     queryFn: async ({ queryKey }) => {
       const dateParam = queryKey[1] ? `?date=${queryKey[1]}` : ''; // Server sẽ nhận chuỗi ISO đầy đủ
@@ -81,7 +81,7 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
   });
 
   const { data: bills = [] } = useQuery({
-    queryKey: ["/api/bills", getUtcIsoStringForLocalDayStart(selectedDate)],
+    queryKey: ["/api/bills", getUtcIsoStringForLocalDayStart(selectedDate)], // Truyền chuỗi ISO đầy đủ cho start
     enabled: isOpen,
     queryFn: async ({ queryKey }) => {
       const startDateIso = queryKey[1]; // Đây là chuỗi ISO UTC cho bắt đầu ngày cục bộ
@@ -142,6 +142,18 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
 
   const isToday = selectedDate?.toDateString() === new Date().toDateString();
 
+  // HÀM XỬ LÝ XUẤT EXCEL
+  const handleExportExcel = () => {
+    const startDateIso = getUtcIsoStringForLocalDayStart(selectedDate);
+    const endDateIso = getUtcIsoStringForNextLocalDayStart(selectedDate);
+
+    // Xây dựng URL tải xuống với các tham số ngày tháng
+    const downloadUrl = `/api/reports/export-bills?startDate=${startDateIso}&endDate=${endDateIso}`;
+    
+    // Mở trong một cửa sổ/tab mới để kích hoạt tải xuống
+    window.open(downloadUrl, '_blank');
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
@@ -167,7 +179,12 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                 </PopoverContent>
               </Popover>
 
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white hover:bg-opacity-20">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-white hover:bg-white hover:bg-opacity-20"
+                onClick={handleExportExcel} // GÁN HÀM ONCLICK TẠI ĐÂY
+              >
                 <Download className="h-4 w-4 mr-2" />
                 Xuất Excel
               </Button>
@@ -198,6 +215,7 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
               </p>
             </div>
           </div>
+
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Chi tiết đơn hàng đã thanh toán</h3>
@@ -205,7 +223,7 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                 <Label htmlFor="filter-payment-method" className="text-sm">Phương thức:</Label>
                 <Select
                   value={filterPaymentMethod}
-                  onValueChange={(value: 'all' | 'Tiền mặt' | 'Chuyển khoản' ) => setFilterPaymentMethod(value)}
+                  onValueChange={(value: 'all' | 'Tiền mặt' | 'Chuyển khoản' | 'Thẻ') => setFilterPaymentMethod(value)}
                 >
                   <SelectTrigger id="filter-payment-method" className="w-[150px] h-8">
                     <SelectValue placeholder="Tất cả" />
@@ -214,6 +232,7 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                     <SelectItem value="all">Tất cả</SelectItem>
                     <SelectItem value="Tiền mặt">Tiền mặt</SelectItem>
                     <SelectItem value="Chuyển khoản">Chuyển khoản</SelectItem>
+                    <SelectItem value="Thẻ">Thẻ</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -247,29 +266,36 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                       </td>
                     </tr>
                   ) : (
-                    billsToDisplay.map((bill: BillWithDetails) => (
-                      <tr key={bill.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {bill.tableName}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${bill.paymentMethod === 'Tiền mặt' ? 'bg-blue-100 text-blue-800' : bill.paymentMethod === 'Chuyển khoản' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
-                            {bill.paymentMethod}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-primary font-semibold">
-                          {formatVND(bill.totalAmount)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(bill.createdAt).toLocaleString('vi-VN')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <Button size="sm" onClick={() => setSelectedBillDetails(bill)}>
-                            Xem chi tiết
-                          </Button>
-                        </td>
-                      </tr>
-                    ))
+                    billsToDisplay.map((bill: BillWithDetails) => {
+                      const isBillToday = isSameDay(new Date(bill.createdAt), selectedDate || new Date());
+                      return (
+                        <tr key={bill.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {bill.tableName}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${bill.paymentMethod === 'Tiền mặt' ? 'bg-blue-100 text-blue-800' : bill.paymentMethod === 'Chuyển khoản' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
+                              {bill.paymentMethod}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-primary font-semibold">
+                            {formatVND(bill.totalAmount)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(bill.createdAt).toLocaleString('vi-VN')}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <Button
+                              size="sm"
+                              onClick={() => setSelectedBillDetails(bill)} // Truyền toàn bộ bill object
+                              disabled={!isBillToday} // Vô hiệu hóa nút nếu bill không phải của ngày hôm nay
+                            >
+                              {isBillToday ? "Xem chi tiết" : "Không có chi tiết (Ngày trước)"}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -303,7 +329,7 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {selectedBillDetails.items.map((item: any) => (
+                  {selectedBillDetails.items.map((item: any) => ( // items đã có sẵn trong selectedBillDetails từ query bills
                     <tr key={item.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {item.menuItemName}
