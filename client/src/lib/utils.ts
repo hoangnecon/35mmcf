@@ -71,3 +71,12 @@ export function throttle<T extends (...args: any[]) => any>(
     }
   };
 }
+
+// Helper function: Get UTC ISO string representing the start of the local selected day
+export const getUtcIsoStringForLocalDayStart = (date: Date | undefined) => {
+  if (!date) return undefined;
+  // Create a Date object at the start of the day in the local timezone
+  const localDayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  // Convert this local time to an ISO string (which is UTC)
+  return localDayStart.toISOString();
+}

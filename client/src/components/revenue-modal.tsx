@@ -1,9 +1,9 @@
 // hoangnecon/35mmcf/35mmcf-fa723ba3b9b96db36942ef1dc83a721ec6f65899/client/src/components/revenue-modal.tsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { formatVND } from "@/lib/utils";
+import { formatVND, getUtcIsoStringForLocalDayStart } from "@/lib/utils"; // Import getUtcIsoStringForLocalDayStart
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { X, Calendar, Download } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -18,6 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 interface RevenueModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialDate?: Date; // Thêm prop này
 }
 
 interface BillWithDetails extends any {
@@ -32,20 +33,28 @@ interface BillWithDetails extends any {
 
 // KHÔNG CẦN ĐỊNH NGHĨA TIME_ZONE NỮA NẾU KHÔNG DÙNG date-fns-tz
 
-export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueModalProps) {
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialDate || new Date()); // Sử dụng initialDate
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<'all' | 'Tiền mặt' | 'Chuyển khoản' | 'Thẻ'>('all');
   const [selectedBillDetails, setSelectedBillDetails] = useState<BillWithDetails | null>(null);
 
+  // Cập nhật selectedDate khi initialDate thay đổi hoặc khi modal mở
+  useEffect(() => {
+    if (isOpen && initialDate) {
+      setSelectedDate(initialDate);
+    }
+  }, [isOpen, initialDate]);
+
+
   // Helper function: Lấy chuỗi ISO UTC đại diện cho bắt đầu ngày cục bộ được chọn
   // Cách này dựa vào việc new Date() với các tham số năm/tháng/ngày sẽ tạo ra một đối tượng Date ở múi giờ cục bộ
   // và toISOString() sẽ chuyển đổi nó sang UTC tương ứng.
-  const getUtcIsoStringForLocalDayStart = (date: Date | undefined) => {
-    if (!date) return undefined;
-    const localDayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    return localDayStart.toISOString(); // Ví dụ: nếu local là GMT+7, 00:00:00 13/06 local sẽ là 17:00:00 12/06 UTC
-  }
+  // const getUtcIsoStringForLocalDayStart = (date: Date | undefined) => { // Đã di chuyển ra utils.ts
+  //   if (!date) return undefined;
+  //   const localDayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  //   return localDayStart.toISOString(); // Ví dụ: nếu local là GMT+7, 00:00:00 13/06 local sẽ là 17:00:00 12/06 UTC
+  // }
 
   // Helper function: Lấy chuỗi ISO UTC đại diện cho bắt đầu ngày cục bộ TIẾP THEO
   const getUtcIsoStringForNextLocalDayStart = (date: Date | undefined) => {

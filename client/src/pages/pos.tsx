@@ -5,7 +5,7 @@ import OrderPanel from "@/components/order-panel";
 import RevenueModal from "@/components/revenue-modal";
 import AdminPanel from "@/components/admin-panel";
 import { Button } from "@/components/ui/button";
-import { formatVND } from "@/lib/utils";
+import { formatVND, getUtcIsoStringForLocalDayStart } from "@/lib/utils"; // Import getUtcIsoStringForLocalDayStart
 import {
   Utensils,
   ShoppingCart,
@@ -67,6 +67,7 @@ export default function PosPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [editingItem, setEditingItem] = useState<MenuItemType | null>(null);
   const [showMenuItemForm, setShowMenuItemForm] = useState(false);
+  const [selectedDateForRevenue, setSelectedDateForRevenue] = useState<Date | undefined>(new Date()); // Thêm state này để theo dõi ngày cho doanh thu
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -92,9 +93,11 @@ export default function PosPage() {
   });
 
   const { data: dailyRevenueData, isLoading: isLoadingDailyRevenue } = useQuery<DailyRevenueData>({
-    queryKey: ["/api/revenue/daily"],
-    queryFn: async () => {
-      const response = await apiRequest("GET", "/api/revenue/daily");
+    queryKey: ["/api/revenue/daily", getUtcIsoStringForLocalDayStart(selectedDateForRevenue)], // Cập nhật queryKey
+    queryFn: async ({ queryKey }) => {
+      const [_key, dateParam] = queryKey as [string, string | undefined];
+      const url = dateParam ? `/api/revenue/daily?date=${dateParam}` : '/api/revenue/daily';
+      const response = await apiRequest("GET", url);
       if (!response.ok) {
         const errorBody = await response.text();
         throw new Error(errorBody || "Failed to fetch daily revenue");
@@ -943,6 +946,248 @@ export default function PosPage() {
                     </div>
                   </div>
                 </TabsContent>
+                <TabsContent value="manage-items" className="h-[calc(100vh-150px)] overflow-y-auto p-2">
+                  <div className="mb-6">
+                    <Button
+                      onClick={() => {
+                        setShowMenuItemForm(true);
+                        setEditingItem(null);
+                        form.reset({ name: "", price: 0, category: "", imageUrl: "", available: 1, menuCollectionId: selectedCollectionId });
+                      }}
+                      className="bg-green-500 hover:bg-green-600"
+                    >
+                      <Plus className="h-4 w-4 mr-2" /> Thêm món mới
+                    </Button>
+                  </div>
+                  {showMenuItemForm && (
+                    <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                      <h3 className="text-lg font-semibold mb-4">
+                        {editingItem ? "Chỉnh sửa món ăn" : "Thêm món mới"}
+                      </h3>
+                      <Form {...form}>
+                        <form onSubmit={form.handleSubmit(handleSubmitMenuItem)} className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <FormField
+                              control={form.control}
+                              name="name"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Tên món</FormLabel>
+                                  <FormControl>
+                                    <Input placeholder="Nhập tên món..." {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="price"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Giá (VND)</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      placeholder="Nhập giá..."
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="category"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Loại món</FormLabel>
+                                  <Select
+                                    onValueChange={field.onChange}
+                                    value={field.value || ""}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Chọn loại món" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      {categories.map((cat) => (
+                                        <SelectItem key={cat} value={cat}>
+                                          {cat}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="available"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Trạng thái</FormLabel>
+                                  <Select
+                                    onValueChange={(value) => field.onChange(parseInt(value))}
+                                    value={field.value != null ? field.value.toString() : "1"}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="1">Có sẵn</SelectItem>
+                                      <SelectItem value="0">Hết hàng</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="menuCollectionId"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Thuộc bảng thực đơn</FormLabel>
+                                  <Select
+                                    onValueChange={(value) => field.onChange(value ? parseInt(value) : null)}
+                                    value={field.value != null ? field.value.toString() : ""}
+                                    disabled={isLoadingCollections}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Chọn bảng thực đơn (Mặc định nếu không chọn)" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="">-- Không chọn (Chung) --</SelectItem>
+                                      {isLoadingCollections ? (
+                                        <SelectItem value="loading_mc_form_placeholder" disabled>
+                                          Đang tải...
+                                        </SelectItem>
+                                      ) : menuCollections.length === 0 ? (
+                                        <SelectItem value="no_mc_form_placeholder" disabled>
+                                          Không có bảng
+                                        </SelectItem>
+                                      ) : (
+                                        menuCollections
+                                          .filter((col) => col.isActive === 1)
+                                          .map((collection) => (
+                                            <SelectItem key={collection.id} value={collection.id.toString()}>
+                                              {collection.name}
+                                            </SelectItem>
+                                          ))
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                          <FormField
+                            control={form.control}
+                            name="imageUrl"
+                            render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>URL hình ảnh</FormLabel>
+                                  <FormControl>
+                                    <Input placeholder="https://example.com/image.jpg" {...field} value={field.value || ""} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                            )}
+                          />
+                          <div className="flex gap-2">
+                            <Button type="submit" disabled={addMenuItemMutation.isPending || updateMenuItemMutation.isPending}>
+                              {editingItem ? "Cập nhật món" : "Thêm món"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                setShowMenuItemForm(false);
+                                setEditingItem(null);
+                                form.reset();
+                              }}
+                            >
+                              Hủy
+                            </Button>
+                          </div>
+                        </form>
+                      </Form>
+                    </div>
+                  )}
+                  <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                    <div className="p-4 border-b bg-gray-50">
+                      <h3 className="text-lg font-semibold flex items-center">
+                        <Utensils className="h-5 w-5 mr-2" /> Danh sách món ăn
+                      </h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      {isLoadingMenuItems ? (
+                        <div className="p-4 text-center text-gray-500">Đang tải món ăn...</div>
+                      ) : menuItems.length === 0 ? (
+                        <div className="text-center p-8 text-gray-500">
+                          {selectedCollectionId ? "Không có món ăn nào trong bảng này." : "Không có món ăn nào để hiển thị."}
+                        </div>
+                      ) : (
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tên món</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loại</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Giá</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trạng thái</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thuộc bảng</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {menuItems.map((item) => (
+                              <tr key={item.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center">
+                                    {item.imageUrl && (
+                                      <img src={item.imageUrl} alt={item.name} className="h-10 w-10 rounded-lg object-cover mr-3" />
+                                    )}
+                                    <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.category}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">{formatVND(item.price)}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${item.available ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                                    {item.available ? "Có sẵn" : "Hết hàng"}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                  {menuCollections.find(col => col.id === item.menuCollectionId)?.name || 'Chung'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                  <div className="flex space-x-2">
+                                    <Button size="sm" variant="outline" onClick={() => handleEditMenuItem(item)}>
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
+                                    <Button size="sm" variant="outline" onClick={() => handleDeleteMenuItem(item.id)} className="text-red-600 hover:text-red-800">
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                </TabsContent>
               </Tabs>
             </div>
             <div className="w-96 bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
@@ -978,7 +1223,7 @@ export default function PosPage() {
         </div>
       </div>
 
-      <RevenueModal isOpen={isRevenueOpen} onClose={() => setIsRevenueOpen(false)} />
+      <RevenueModal isOpen={isRevenueOpen} onClose={() => setIsRevenueOpen(false)} initialDate={selectedDateForRevenue} /> {/* Truyền selectedDateForRevenue cho RevenueModal */}
       <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
     </div>
   );
