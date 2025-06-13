@@ -232,8 +232,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/orders/:id/complete", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const order = await storage.completeOrder(id);
+      let { paymentMethod, discountAmount } = req.body;
 
+      console.log(`[Backend] Received paymentMethod for order ${id}: '${paymentMethod}'`);
+      console.log(`[Backend] Received discountAmount for order ${id}: ${discountAmount}`);
+
+      if (typeof paymentMethod === 'string') {
+        paymentMethod = paymentMethod.trim();
+      }
+
+      if (!paymentMethod || (paymentMethod !== 'Tiền mặt' && paymentMethod !== 'Chuyển khoản' && paymentMethod !== 'Thẻ')) {
+        console.warn(`[Backend] Invalid payment method after trim: '${paymentMethod}'`);
+        return res.status(400).json({ message: "Invalid payment method provided. Must be 'Tiền mặt', 'Thẻ' or 'Chuyển khoản'." });
+      }
+
+      if (typeof discountAmount !== 'number' || discountAmount < 0) {
+        console.warn(`[Backend] Invalid discount amount: '${discountAmount}'`);
+        return res.status(400).json({ message: "Invalid discount amount. Must be a non-negative number." });
+      }
+
+      const order = await storage.completeOrder(id, paymentMethod, discountAmount);
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
@@ -244,11 +262,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // THÊM ROUTE CẬP NHẬT GHI CHÚ ĐƠN HÀNG (NOTE CHO BÀN)
+  // CẬP NHẬT ROUTE CẬP NHẬT GHI CHÚ ĐƠN HÀNG (NOTE CHO BÀN)
   app.put("/api/orders/:id/note", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { note } = req.body;
+      let { note } = req.body;
+
+      if (typeof note === 'string') {
+        note = note.trim();
+      }
+      if (note === '') {
+          note = null;
+      }
 
       if (typeof note !== 'string' && note !== null) {
         return res.status(400).json({ message: "Invalid note format. Must be a string or null." });
@@ -265,11 +290,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // THÊM ROUTE HỦY ĐƠN HÀNG
+
+  // CẬP NHẬT ROUTE HỦY ĐƠN HÀNG
   app.put("/api/orders/:orderId/cancel", async (req, res) => {
     try {
       const orderId = parseInt(req.params.orderId);
-      const { tableId } = req.body; // tableId là cần thiết để cập nhật trạng thái bàn
+      const { tableId } = req.body;
 
       if (isNaN(orderId) || isNaN(tableId)) {
         return res.status(400).json({ message: "Invalid orderId or tableId" });
@@ -337,7 +363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Order not found after adding item" });
       }
       const updatedOrderItems = await storage.getOrderItems(updatedOrder.id);
-      
+
       res.status(201).json({ ...updatedOrder, items: updatedOrderItems });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -414,6 +440,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to remove order item" });
     }
   });
+
+  // THÊM ROUTE CHO THANH TOÁN MỘT PHẦN
+  app.post("/api/orders/:orderId/partial-payment", async (req, res) => {
+    try {
+      const orderId = parseInt(req.params.orderId);
+      const { itemsToPay, paymentMethod, partialDiscountAmount } = req.body;
+
+      if (isNaN(orderId) || !Array.isArray(itemsToPay) || !paymentMethod || typeof partialDiscountAmount !== 'number') {
+        return res.status(400).json({ message: "Invalid partial payment data." });
+      }
+
+      const updatedOrder = await storage.processPartialPayment(orderId, itemsToPay, paymentMethod, partialDiscountAmount);
+
+      if (!updatedOrder) {
+        return res.status(404).json({ message: "Order not found or partial payment failed." });
+      }
+
+      res.json(updatedOrder);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid items to pay data", errors: error.errors });
+      }
+      console.error("Failed to process partial payment:", error);
+      res.status(500).json({ message: "Failed to process partial payment" });
+    }
+  });
+
 
   // Revenue (sẽ lấy từ bảng bills)
   app.get("/api/revenue/daily", async (req, res) => {

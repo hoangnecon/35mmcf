@@ -104,11 +104,11 @@ export default function PosPage() {
   });
 
   // Query for the active order of the selected table
-  const { 
-    data: currentOrderWithItems, 
-    isLoading: isLoadingCurrentOrder, 
+  const {
+    data: currentOrderWithItems,
+    isLoading: isLoadingCurrentOrder,
     isFetching: isFetchingCurrentOrder,
-    refetch: refetchCurrentOrder 
+    refetch: refetchCurrentOrder
   } = useQuery<(OrderType & { items: OrderItemType[] }) | null>({
     queryKey: ["/api/tables", selectedTableId, "active-order"],
     enabled: selectedTableId !== null,
@@ -240,10 +240,10 @@ export default function PosPage() {
     },
   });
 
-  const completeOrderMutation = useMutation<OrderType, Error, number>({
-    mutationFn: async (orderId: number) => {
-      console.log(`Completing order ${orderId}`);
-      const response = await apiRequest("PUT", `/api/orders/${orderId}/complete`);
+  const completeOrderMutation = useMutation<OrderType, Error, { orderId: number; paymentMethod: string; discountAmount: number }>({
+    mutationFn: async ({ orderId, paymentMethod, discountAmount }) => {
+      console.log(`[Frontend] Sending paymentMethod for order ${orderId}: '${paymentMethod}', discount: ${discountAmount}`);
+      const response = await apiRequest("PUT", `/api/orders/${orderId}/complete`, { paymentMethod, discountAmount });
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(errorText || `Failed to complete order ${orderId}`);
@@ -257,6 +257,7 @@ export default function PosPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/revenue/daily"] });
       queryClient.invalidateQueries({ queryKey: ["/api/revenue/by-table"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tables", completedOrderData.tableId, "active-order"] });
       if (selectedTableId === completedOrderData.tableId) {
         setSelectedTableId(null);
@@ -332,7 +333,7 @@ export default function PosPage() {
     setActiveTab('menu');
   }, [selectedTableId, toast]);
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (paymentMethod: string, discountAmount: number) => {
     if (!activeOrder || !activeOrder.id) {
       toast({
         title: "Lỗi",
@@ -341,7 +342,7 @@ export default function PosPage() {
       });
       return;
     }
-    await completeOrderMutation.mutateAsync(activeOrder.id);
+    await completeOrderMutation.mutateAsync({ orderId: activeOrder.id, paymentMethod, discountAmount });
   };
 
   const handleAddMenuItemToOrder = async (menuItem: MenuItemType) => {
@@ -849,13 +850,13 @@ export default function PosPage() {
                             control={form.control}
                             name="imageUrl"
                             render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>URL hình ảnh</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="https://example.com/image.jpg" {...field} value={field.value || ""} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
+                                <FormItem>
+                                  <FormLabel>URL hình ảnh</FormLabel>
+                                  <FormControl>
+                                    <Input placeholder="https://example.com/image.jpg" {...field} value={field.value || ""} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
                             )}
                           />
                           <div className="flex gap-2">
@@ -888,7 +889,7 @@ export default function PosPage() {
                       {isLoadingMenuItems ? (
                         <div className="p-4 text-center text-gray-500">Đang tải món ăn...</div>
                       ) : menuItems.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500">
+                        <div className="text-center p-8 text-gray-500">
                           {selectedCollectionId ? "Không có món ăn nào trong bảng này." : "Không có món ăn nào để hiển thị."}
                         </div>
                       ) : (
@@ -961,24 +962,24 @@ export default function PosPage() {
         )}
       </div>
 
-      <div className="bg-primary text-primary-foreground px-4 py-2 flex items-center justify-between text-sm">
-        <div className="flex items-center space-x-4">
-        </div>
-        <div className="flex items-center space-x-4">
-          <span>Doanh thu: <strong>{formatVND(dailyRevenueData?.revenue ?? 0)}</strong> {isLoadingDailyRevenue && <span className="text-xs opacity-75 ml-1">(Đang tải...)</span>}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="bg-white bg-opacity-20 hover:bg-opacity-30"
-            onClick={() => setIsRevenueOpen(true)}
-          >
-            <TrendingUp className="h-4 w-4 mr-1" /> Báo cáo
-          </Button>
-        </div>
-      </div>
+      <div className="bg-primary text-primary-foreground px-4 py-2 flex items-center justify-between text-sm">
+        <div className="flex items-center space-x-4">
+        </div>
+        <div className="flex items-center space-x-4">
+          <span>Doanh thu: <strong>{formatVND(dailyRevenueData?.revenue ?? 0)}</strong> {isLoadingDailyRevenue && <span className="text-xs opacity-75 ml-1">(Đang tải...)</span>}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="bg-white bg-opacity-20 hover:bg-opacity-30"
+            onClick={() => setIsRevenueOpen(true)}
+          >
+            <TrendingUp className="h-4 w-4 mr-1" /> Báo cáo
+          </Button>
+        </div>
+      </div>
 
-      <RevenueModal isOpen={isRevenueOpen} onClose={() => setIsRevenueOpen(false)} />
-      <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
-    </div>
-  );
+      <RevenueModal isOpen={isRevenueOpen} onClose={() => setIsRevenueOpen(false)} />
+      <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
+    </div>
+  );
 }

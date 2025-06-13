@@ -23,9 +23,9 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
     enabled: isOpen,
   });
 
-  // Fetch orders for table
-  const { data: orders = [] } = useQuery({
-    queryKey: ["/api/orders"],
+  // Fetch bills for detailed report
+  const { data: bills = [] } = useQuery({ // CẬP NHẬT: Lấy dữ liệu từ endpoint /api/bills
+    queryKey: ["/api/bills"],
     enabled: isOpen,
   });
 
@@ -35,7 +35,8 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
     orders: item.orderCount,
   }));
 
-  const completedOrders = orders.filter((order: any) => order.status === 'completed');
+  // Cập nhật để sử dụng dữ liệu từ 'bills' thay vì 'orders'
+  const completedBills = bills.filter((bill: any) => bill.totalAmount > 0); // Lọc các bill có doanh thu > 0
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -47,6 +48,10 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
               <Button variant="ghost" size="sm" className="text-white hover:bg-white hover:bg-opacity-20">
                 <Calendar className="h-4 w-4 mr-2" />
                 Hôm nay
+              </Button>
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white hover:bg-opacity-20">
+                <Download className="h-4 w-4 mr-2" />
+                Xuất Excel
               </Button>
               <Button variant="ghost" size="sm" onClick={onClose} className="text-white hover:bg-white hover:bg-opacity-20">
                 <X className="h-4 w-4" />
@@ -63,14 +68,14 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
               <p className="text-2xl font-bold">{formatVND(dailyRevenueData?.revenue || 0)}</p>
             </div>
             <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg">
-              <h3 className="text-sm font-medium opacity-90">Số đơn hàng</h3>
-              <p className="text-2xl font-bold">{completedOrders.length}</p>
+              <h3 className="text-sm font-medium opacity-90">Số đơn hàng đã hoàn thành</h3>
+              <p className="text-2xl font-bold">{completedBills.length}</p>
             </div>
             <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4 rounded-lg">
-              <h3 className="text-sm font-medium opacity-90">Trung bình/đơn</h3>
+              <h3 className="text-sm font-medium opacity-90">Trung bình/bill</h3>
               <p className="text-2xl font-bold">
-                {completedOrders.length > 0 
-                  ? formatVND(Math.round((dailyRevenueData?.revenue || 0) / completedOrders.length))
+                {completedBills.length > 0
+                  ? formatVND(Math.round((dailyRevenueData?.revenue || 0) / completedBills.length))
                   : formatVND(0)
                 }
               </p>
@@ -84,18 +89,18 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="table" 
+                  <XAxis
+                    dataKey="table"
                     angle={-45}
                     textAnchor="end"
                     height={60}
                     fontSize={12}
                   />
-                  <YAxis 
+                  <YAxis
                     tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
                     fontSize={12}
                   />
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value: any) => [formatVND(value), "Doanh thu"]}
                     labelFormatter={(label) => `Bàn: ${label}`}
                   />
@@ -104,11 +109,11 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
               </ResponsiveContainer>
             </div>
           )}
-          
+
           {/* Revenue Table */}
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-gray-50">
-              <h3 className="text-lg font-semibold">Chi tiết đơn hàng</h3>
+              <h3 className="text-lg font-semibold">Chi tiết đơn hàng đã thanh toán</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -118,10 +123,10 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                       Bàn
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Trạng thái
-                    </th>
+                      Phương thức TT
+                    </th> {/* THÊM CỘT NÀY */}
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Doanh thu
+                      Tổng tiền
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Thời gian
@@ -129,28 +134,28 @@ export default function RevenueModal({ isOpen, onClose }: RevenueModalProps) {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {completedOrders.length === 0 ? (
+                  {completedBills.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
-                        Chưa có đơn hàng nào trong ngày
+                        Chưa có bill nào trong ngày
                       </td>
                     </tr>
                   ) : (
-                    completedOrders.map((order: any) => (
-                      <tr key={order.id} className="hover:bg-gray-50">
+                    completedBills.map((bill: any) => ( // CẬP NHẬT: Duyệt qua completedBills
+                      <tr key={bill.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {order.tableName}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                            Hoàn thành
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-primary font-semibold">
-                          {formatVND(order.total)}
+                          {bill.tableName}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(order.completedAt || order.createdAt).toLocaleString('vi-VN')}
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${bill.paymentMethod === 'Tiền mặt' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+                            {bill.paymentMethod}
+                          </span>
+                        </td> {/* HIỂN THỊ PHƯƠNG THỨC TT */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-primary font-semibold">
+                          {formatVND(bill.totalAmount)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(bill.createdAt).toLocaleString('vi-VN')}
                         </td>
                       </tr>
                     ))

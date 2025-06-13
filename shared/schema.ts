@@ -38,7 +38,7 @@ export const orders = sqliteTable("orders", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   completedAt: text("completed_at"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  note: text("note"), // THÊM TRƯỜNG NOTE VÀO BẢNG ORDERS
+  note: text("note"),
 });
 
 export const orderItems = sqliteTable("order_items", {
@@ -52,14 +52,14 @@ export const orderItems = sqliteTable("order_items", {
   note: text("note"),
 });
 
-// Bảng mới để lưu trữ các bill đã hoàn thành (thay thế cho Google Sheets Sync)
+// Bảng mới để lưu trữ các bill đã hoàn thành
 export const bills = sqliteTable("bills", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  orderId: integer("order_id").references(() => orders.id, { onDelete: 'cascade' }).notNull().unique(), // Mỗi order chỉ có 1 bill
+  orderId: integer("order_id").references(() => orders.id, { onDelete: 'cascade' }).notNull(), // CẬP NHẬT: Bỏ .unique() ở đây
   tableId: integer("table_id").notNull(),
   tableName: text("table_name").notNull(),
   totalAmount: integer("total_amount").notNull(),
-  paymentMethod: text("payment_method").default("Tiền mặt"), // Ví dụ: 'Tiền mặt', 'Chuyển khoản'
+  paymentMethod: text("payment_method").notNull().default("Tiền mặt"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`), // Thời điểm bill được tạo
 });
 
