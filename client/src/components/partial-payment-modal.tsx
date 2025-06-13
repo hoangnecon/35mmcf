@@ -265,7 +265,7 @@
                       <RadioGroup
                         value={selectedPaymentMethod}
                         onValueChange={setSelectedPaymentMethod}
-                        className="grid grid-cols-3 gap-2 text-sm"
+                        className="grid grid-cols-2 gap-2 text-sm"
                       >
                         <div
                           className="flex flex-col items-center justify-center space-y-1 border rounded-md p-2 cursor-pointer hover:bg-gray-50"
@@ -273,13 +273,6 @@
                         >
                           <RadioGroupItem value="Tiền mặt" id="partial-payment-cash" className="mr-0" />
                           <Label htmlFor="partial-payment-cash" className="font-medium cursor-pointer">Tiền mặt</Label>
-                        </div>
-                        <div
-                          className="flex flex-col items-center justify-center space-y-1 border rounded-md p-2 cursor-pointer hover:bg-gray-50"
-                          onClick={() => setSelectedPaymentMethod("Thẻ")}
-                        >
-                          <RadioGroupItem value="Thẻ" id="partial-payment-card" className="mr-0" />
-                          <Label htmlFor="partial-payment-card" className="font-medium cursor-pointer">Thẻ</Label>
                         </div>
                         <div
                           className="flex flex-col items-center justify-center space-y-1 border rounded-md p-2 cursor-pointer hover:bg-gray-50"
@@ -293,15 +286,6 @@
                   </div> {/* Closing div for the wrapper of payment details and payment method sections */}
 
                   <DialogFooter className="flex-row justify-between items-center pt-4 bg-white">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-gray-700 hover:bg-gray-200"
-                      onClick={() => { /* Logic in tạm tính nếu cần */ }}
-                    >
-                      <Printer className="h-4 w-4 mr-2" />
-                      In tạm tính
-                    </Button>
                     <Button
                       onClick={handleConfirmPartialPayment}
                       disabled={processPartialPaymentMutation.isPending || subtotalSelected <= 0 || totalAfterDiscount < 0}

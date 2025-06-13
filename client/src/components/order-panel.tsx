@@ -591,10 +591,6 @@ export default function OrderPanel({
             <div className="flex-1 border-r p-4 overflow-y-auto">
               <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
                 <div className="flex items-center space-x-2">
-                  <span>Lê Thị A</span>
-                  <span className="text-xs text-blue-500">(9 điểm)</span>
-                </div>
-                <div className="flex items-center space-x-2">
                   <CalendarDays className="h-4 w-4 text-gray-500" />
                   <span>{formattedDate}</span>
                   <ClockIcon className="h-4 w-4 text-gray-500" />
@@ -693,7 +689,7 @@ export default function OrderPanel({
                   <RadioGroup
                     value={selectedPaymentMethod}
                     onValueChange={setSelectedPaymentMethod}
-                    className="grid grid-cols-3 gap-2 text-sm"
+                    className="grid grid-cols-2 gap-2 text-sm"
                   >
                     <div
                       className="flex flex-col items-center justify-center space-y-1 border rounded-md p-2 cursor-pointer hover:bg-gray-50"
@@ -701,13 +697,6 @@ export default function OrderPanel({
                     >
                       <RadioGroupItem value="Tiền mặt" id="payment-cash" className="mr-0" />
                       <Label htmlFor="payment-cash" className="font-medium cursor-pointer">Tiền mặt</Label>
-                    </div>
-                    <div
-                      className="flex flex-col items-center justify-center space-y-1 border rounded-md p-2 cursor-pointer hover:bg-gray-50"
-                      onClick={() => setSelectedPaymentMethod("Thẻ")}
-                    >
-                      <RadioGroupItem value="Thẻ" id="payment-card" className="mr-0" />
-                      <Label htmlFor="payment-card" className="font-medium cursor-pointer">Thẻ</Label>
                     </div>
                     <div
                       className="flex flex-col items-center justify-center space-y-1 border rounded-md p-2 cursor-pointer hover:bg-gray-50"
@@ -722,21 +711,12 @@ export default function OrderPanel({
 
               <DialogFooter className="flex-row justify-between items-center pt-4 bg-white">
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-gray-700 hover:bg-gray-200"
-                  onClick={() => { /* Logic in tạm tính nếu cần */ }}
-                >
-                  <Printer className="h-4 w-4 mr-2" />
-                  In tạm tính
-                </Button>
-                <Button
                   onClick={handleConfirmCheckout}
                   disabled={isCheckingOut || totalAfterDiscount < 0}
                   className="bg-green-500 hover:bg-green-600 text-white py-2 px-4 text-base"
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Trả hàng (Enter)
+                  Thanh toán
                 </Button>
               </DialogFooter>
             </div>
