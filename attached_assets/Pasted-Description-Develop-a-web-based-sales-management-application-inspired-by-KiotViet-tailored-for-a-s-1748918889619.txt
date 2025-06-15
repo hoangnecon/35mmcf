@@ -1,0 +1,58 @@
+Description: Develop a web-based sales management application inspired by KiotViet, tailored for a small café or bar. The application uses Node.js, Express, HTML/CSS/JavaScript, and integrates with Google Sheets for data synchronization. The GUI is based on the uploaded KiotViet bar interface image, featuring table selection, order creation, and revenue tracking. The app must support table-based order management, real-time order syncing to Google Sheets for remote access, and Excel export. Budget is ~100,000 VND (~$4 USD), prioritizing free tools for permanent use.
+
+Technical Requirements:
+
+Languages/Frameworks: Node.js, Express (backend), HTML/CSS/JavaScript (frontend), Google Sheets API, Chart.js for visualizations.
+Environment: Replit (free tier).
+GUI: Match the uploaded KiotViet bar GUI image, including:
+A grid layout of tables (e.g., "Bàn 1" to "Bàn 22", "Phòng VIP 1" to "Phòng VIP 10") with clickable buttons or boxes to select a table.
+A right-side panel for order details (e.g., product name, quantity, price, total), with buttons for actions like "Thanh toán" (Checkout) and "Thêm món" (Add Item).
+A footer showing total amount (e.g., "Tổng tiền: 26,400") and admin/user options.
+Responsive design for desktop and mobile use, replicating the blue and white color scheme.
+Database: Use Google Sheets as a free cloud database to store order data, accessible remotely.
+Budget: Utilize free tools (Replit, Google Sheets, Chart.js). Allocate ~100,000 VND for a domain name or minimal hosting (e.g., Vercel) for long-term deployment.
+Deployment: Host on Replit for development; optionally deploy to Vercel for permanent use.
+Detailed Feature Description:
+
+Table Management:
+Display a grid of clickable tables (e.g., "Bàn 1" to "Bàn 22", "Phòng VIP 1" to "Phòng VIP 10") matching the GUI layout.
+Highlight the selected table (e.g., blue background as in "Bàn 3").
+Assign orders to the selected table, updating the right-side panel.
+Order Management:
+Add items to an order via the right-side panel (e.g., "Thạch trân châu" with quantity 1 at 6,400 VND, "Bánh tráng trộn" with quantity 1 at 20,000 VND).
+Allow editing quantity or removing items.
+Calculate and display the total amount (e.g., "Tổng tiền: 26,400") in real-time.
+Record the timestamp for each order (e.g., "03/06/2025 09:44").
+Revenue Reporting:
+Show a list of orders per table with total revenue.
+Provide a filter to view revenue by table or date (e.g., "03/06/2025").
+Include a bar chart (using Chart.js) to visualize daily revenue across tables.
+Google Sheets Integration:
+Sync each order to a Google Sheet with the following structure:
+Column A: Table Name (e.g., "Bàn 3")
+Column B: Product Name (e.g., "Thạch trân châu")
+Column C: Quantity (number)
+Column D: Price per Unit (number)
+Column E: Total Price (number, calculated as quantity × price)
+Column F: Timestamp (text, format "dd/mm/yyyy hh:mm")
+Enable remote access to the Google Sheet via browser or mobile app for real-time revenue tracking.
+Support exporting Google Sheet data to Excel (.xlsx) via Google Sheets’ built-in download feature.
+GUI Implementation:
+Replicate the uploaded KiotViet bar GUI:
+Left side: Grid of table buttons (e.g., "Bàn 1" to "Bàn 22", "Phòng VIP 1" to "Phòng VIP 10").
+Right side: Order panel with item list, quantity inputs, and total amount.
+Footer: Display "Tổng tiền" and buttons like "Thanh toán" and "Thêm món".
+Use the blue (#003087) and white color scheme, with a clean, responsive layout.
+Include a cartoon character icon (similar to the GUI) for branding.
+Remote Access:
+Allow users to view order and revenue data via Google Sheets from any device (phone, computer) at home or elsewhere.
+Provide a web URL (via Replit or Vercel) to access the app remotely.
+Permanent Use:
+Use free tools (Replit, Google Sheets, Chart.js) to avoid recurring costs.
+Optionally, use ~100,000 VND to purchase a domain (e.g., via Namecheap) or host on Vercel for stable, long-term access.
+Additional Notes:
+
+Keep the code simple and modular for easy maintenance.
+Ensure the app is secure (e.g., restrict access to authorized users if possible).
+Optimize for minimal setup time, leveraging the uploaded GUI image for design consistency.
+Provide a basic readme with instructions for running the app and configuring Google Sheets API.
