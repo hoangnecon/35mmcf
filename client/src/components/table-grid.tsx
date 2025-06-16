@@ -64,7 +64,7 @@ export default function TableGrid({ tables, selectedTableId, onTableSelect }: Ta
       </div>
 
       {/* Special Tables (Mang về, Giao đi) */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 gap-4 mb-6">
         {specialTables.map((table) => (
           <div
             key={table.id}
@@ -77,8 +77,7 @@ export default function TableGrid({ tables, selectedTableId, onTableSelect }: Ta
         ))}
       </div>
 
-      {/* Regular Tables and VIP Rooms */}
-      <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
+      <div className="grid grid-cols-4 md:grid-cols-4 lg:grid-cols-3 gap-4">
         {/* Render regular tables (Bàn 1-22) */}
         {regularTables.map((table) => (
           <div

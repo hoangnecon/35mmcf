@@ -327,7 +327,7 @@ export default function OrderPanel({
     <div className="flex flex-col h-full max-h-screen">
       <div className="bg-accent p-4 border-b">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-accent-foreground flex items-center">
+          <h2 className="text-xl font-semibold text-accent-foreground flex items-center">
             <TableIcon className="h-4 w-4 mr-2" />
             <span>{selectedTable.name}</span>
           </h2>
@@ -350,7 +350,7 @@ export default function OrderPanel({
             </Button>
           </div>
         </div>
-        <div className="text-xs text-gray-600">
+        <div className="text-s text-gray-600">
           <Clock className="h-3 w-3 inline mr-1" />
           <span>
             {activeOrder
@@ -358,7 +358,7 @@ export default function OrderPanel({
               : "Chưa có đơn hàng"}
           </span>
           {activeOrder?.note && (
-            <div className="text-xs text-gray-700 mt-1 flex items-center">
+            <div className="text-s text-gray-700 mt-1 flex items-center">
               <NotebookPen className="h-3 w-3 inline mr-1" />
               Ghi chú bàn: {activeOrder.note}
             </div>
@@ -459,9 +459,6 @@ export default function OrderPanel({
                   >
                     <Plus className="h-3 w-3" />
                   </Button>
-                </div>
-                <div className="text-right text-sm text-gray-500">
-                  {formatVND(item.unitPrice)}/món
                 </div>
               </div>
             </div>

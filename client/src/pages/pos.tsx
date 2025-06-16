@@ -592,7 +592,7 @@ export default function PosPage() {
                 onTableSelect={handleTableSelect}
               />
             </div>
-            <div className="w-96 bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
+            <div className="w-[35rem] bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
               {isLoadingCurrentOrder || isFetchingCurrentOrder ? (
                 <div className="p-4 text-center text-gray-500">Đang tải đơn hàng</div>
               ) : (
@@ -943,7 +943,7 @@ export default function PosPage() {
                 </TabsContent>
               </Tabs>
             </div>
-            <div className="w-96 bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
+            <div className="w-[40rem] bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
               {isLoadingCurrentOrder || isFetchingCurrentOrder ? (
                 <div className="p-4 text-center text-gray-500">Đang tải đơn hàng...</div>
               ) : (

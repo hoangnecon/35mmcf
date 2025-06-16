@@ -59,32 +59,47 @@ async function seedDatabase() {
     // Cập nhật menuItemsData để sử dụng defaultCollectionId
     const menuItemsData = [
       { 
-        name: 'Thạch trái cây', price: 6400, category: 'Đồ uống', 
-        imageUrl: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200',
+        name: 'Đen', price: 6400, category: 'Đồ uống', 
+        imageUrl: 'https://scontent.fhan2-3.fna.fbcdn.net/v/t39.30808-6/375828618_828983451993983_239819946826678734_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=6ee11a&_nc_eui2=AeFo1tiG4vv149kwgqm2iUutW_BSviK_tY5b8FK-Ir-1jlZ6iftehLihHE-noLNgggH2vRmerGw1GZOp3u9be9a2&_nc_ohc=H7jPw5qEtSEQ7kNvwFY2oX0&_nc_oc=Adk8CQDcsqPEzIfttBsc_CeQpQfEuhA84PTazjNI9J1GeGMX-2yAXwyov8haVfES9_Xnqzch_gU4BuLA4n2atMRH&_nc_zt=23&_nc_ht=scontent.fhan2-3.fna&_nc_gid=V77vXjq4ZQXHaHNYjzqXPw&oh=00_AfO1wpu5xGkwPyzDuZ9eS6PPD_q83-mkW6TXSQEc4217VA&oe=6855905A',
         available: 1, menuCollectionId: defaultCollectionId // Sử dụng ID collection đã được xác định
       },
       { 
-        name: 'Bánh tráng trộn', price: 20000, category: 'Đồ ăn vặt', 
-        imageUrl: 'https://images.unsplash.com/photo-1515443961218-a51367888e4b?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200',
+        name: 'Đen SG', price: 20000, category: 'Đồ ăn vặt', 
+        imageUrl: 'https://scontent.fhan2-3.fna.fbcdn.net/v/t39.30808-6/375828618_828983451993983_239819946826678734_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=6ee11a&_nc_eui2=AeFo1tiG4vv149kwgqm2iUutW_BSviK_tY5b8FK-Ir-1jlZ6iftehLihHE-noLNgggH2vRmerGw1GZOp3u9be9a2&_nc_ohc=H7jPw5qEtSEQ7kNvwFY2oX0&_nc_oc=Adk8CQDcsqPEzIfttBsc_CeQpQfEuhA84PTazjNI9J1GeGMX-2yAXwyov8haVfES9_Xnqzch_gU4BuLA4n2atMRH&_nc_zt=23&_nc_ht=scontent.fhan2-3.fna&_nc_gid=V77vXjq4ZQXHaHNYjzqXPw&oh=00_AfO1wpu5xGkwPyzDuZ9eS6PPD_q83-mkW6TXSQEc4217VA&oe=6855905A',
         available: 1, menuCollectionId: defaultCollectionId
       },
       { 
-        name: 'Cà phê sữa đá', price: 15000, category: 'Đồ uống', 
-        imageUrl: 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200',
+        name: 'Sữa', price: 15000, category: 'Đồ uống', 
+        imageUrl: 'https://scontent.fhan2-3.fna.fbcdn.net/v/t39.30808-6/375828618_828983451993983_239819946826678734_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=6ee11a&_nc_eui2=AeFo1tiG4vv149kwgqm2iUutW_BSviK_tY5b8FK-Ir-1jlZ6iftehLihHE-noLNgggH2vRmerGw1GZOp3u9be9a2&_nc_ohc=H7jPw5qEtSEQ7kNvwFY2oX0&_nc_oc=Adk8CQDcsqPEzIfttBsc_CeQpQfEuhA84PTazjNI9J1GeGMX-2yAXwyov8haVfES9_Xnqzch_gU4BuLA4n2atMRH&_nc_zt=23&_nc_ht=scontent.fhan2-3.fna&_nc_gid=V77vXjq4ZQXHaHNYjzqXPw&oh=00_AfO1wpu5xGkwPyzDuZ9eS6PPD_q83-mkW6TXSQEc4217VA&oe=6855905A',
         available: 1, menuCollectionId: defaultCollectionId
       },
       { 
-        name: 'Trà sữa trân châu', price: 25000, category: 'Đồ uống', 
-        imageUrl: 'https://images.unsplash.com/photo-1525385133512-2f3bdd039054?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200',
+        name: 'Sữa SG', price: 25000, category: 'Đồ uống', 
+        imageUrl: 'https://scontent.fhan2-3.fna.fbcdn.net/v/t39.30808-6/375828618_828983451993983_239819946826678734_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=6ee11a&_nc_eui2=AeFo1tiG4vv149kwgqm2iUutW_BSviK_tY5b8FK-Ir-1jlZ6iftehLihHE-noLNgggH2vRmerGw1GZOp3u9be9a2&_nc_ohc=H7jPw5qEtSEQ7kNvwFY2oX0&_nc_oc=Adk8CQDcsqPEzIfttBsc_CeQpQfEuhA84PTazjNI9J1GeGMX-2yAXwyov8haVfES9_Xnqzch_gU4BuLA4n2atMRH&_nc_zt=23&_nc_ht=scontent.fhan2-3.fna&_nc_gid=V77vXjq4ZQXHaHNYjzqXPw&oh=00_AfO1wpu5xGkwPyzDuZ9eS6PPD_q83-mkW6TXSQEc4217VA&oe=6855905A',
         available: 1, menuCollectionId: defaultCollectionId
       },
       { 
-        name: 'Nem cuốn', price: 18000, category: 'Đồ ăn', 
-        imageUrl: 'https://images.unsplash.com/photo-1515443961218-a51367888e4b?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200',
+        name: 'Muối', price: 18000, category: 'Đồ ăn', 
+        imageUrl: 'https://scontent.fhan2-3.fna.fbcdn.net/v/t39.30808-6/375828618_828983451993983_239819946826678734_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=6ee11a&_nc_eui2=AeFo1tiG4vv149kwgqm2iUutW_BSviK_tY5b8FK-Ir-1jlZ6iftehLihHE-noLNgggH2vRmerGw1GZOp3u9be9a2&_nc_ohc=H7jPw5qEtSEQ7kNvwFY2oX0&_nc_oc=Adk8CQDcsqPEzIfttBsc_CeQpQfEuhA84PTazjNI9J1GeGMX-2yAXwyov8haVfES9_Xnqzch_gU4BuLA4n2atMRH&_nc_zt=23&_nc_ht=scontent.fhan2-3.fna&_nc_gid=V77vXjq4ZQXHaHNYjzqXPw&oh=00_AfO1wpu5xGkwPyzDuZ9eS6PPD_q83-mkW6TXSQEc4217VA&oe=6855905A',
+        available: 1, menuCollectionId: defaultCollectionId
+      },
+            { 
+        name: 'CF Kẹo đường', price: 12000, category: 'Đồ uống', 
+        imageUrl: 'https://scontent.fhan2-3.fna.fbcdn.net/v/t39.30808-6/375828618_828983451993983_239819946826678734_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=6ee11a&_nc_eui2=AeFo1tiG4vv149kwgqm2iUutW_BSviK_tY5b8FK-Ir-1jlZ6iftehLihHE-noLNgggH2vRmerGw1GZOp3u9be9a2&_nc_ohc=H7jPw5qEtSEQ7kNvwFY2oX0&_nc_oc=Adk8CQDcsqPEzIfttBsc_CeQpQfEuhA84PTazjNI9J1GeGMX-2yAXwyov8haVfES9_Xnqzch_gU4BuLA4n2atMRH&_nc_zt=23&_nc_ht=scontent.fhan2-3.fna&_nc_gid=V77vXjq4ZQXHaHNYjzqXPw&oh=00_AfO1wpu5xGkwPyzDuZ9eS6PPD_q83-mkW6TXSQEc4217VA&oe=6855905A',
         available: 1, menuCollectionId: defaultCollectionId
       },
       { 
-        name: 'Nước dừa tươi', price: 12000, category: 'Đồ uống', 
+        name: 'Bạc Xỉu', price: 12000, category: 'Đồ uống', 
+        imageUrl: 'https://images.unsplash.com/photo-1571863533956-01c88e79957e?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200',
+        available: 1, menuCollectionId: defaultCollectionId
+      },
+      {
+        name: 'Bạc Xỉu Muối', price: 12000, category: 'Đồ uống', 
+        imageUrl: 'https://images.unsplash.com/photo-1571863533956-01c88e79957e?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200',
+        available: 1, menuCollectionId: defaultCollectionId
+      },
+      { 
+        name: 'Bạc Xỉu Kẹo Đường', price: 12000, category: 'Đồ uống', 
         imageUrl: 'https://images.unsplash.com/photo-1571863533956-01c88e79957e?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=200',
         available: 1, menuCollectionId: defaultCollectionId
       },
