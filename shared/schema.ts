@@ -35,19 +35,20 @@ export const orders = sqliteTable("orders", {
   tableName: text("table_name").notNull(),
   status: text("status").notNull().default("active"), // 'active', 'completed', 'cancelled'
   total: integer("total").notNull().default(0),
-  createdAt: text("created_at").notNull(), // Loại bỏ default(sql`CURRENT_TIMESTAMP`)
+  createdAt: text("created_at").notNull(),
   completedAt: text("completed_at"),
-  updatedAt: text("updated_at").notNull(), // Loại bỏ default(sql`CURRENT_TIMESTAMP`)
+  updatedAt: text("updated_at").notNull(),
   note: text("note"),
 });
 
 export const orderItems = sqliteTable("order_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   orderId: integer("order_id").notNull().references(() => orders.id, { onDelete: 'cascade' }),
-  menuItemId: integer("menu_item_id").notNull().references(() => menuItems.id),
-  menuItemName: text("menu_item_name").notNull(),
+  // ĐÃ SỬA: menuItemId có thể là NULL và sẽ SET NULL khi menuItems bị xóa
+  menuItemId: integer("menu_item_id").references(() => menuItems.id, { onDelete: 'set null' }),
+  menuItemName: text("menu_item_name").notNull(), // Giữ nguyên để lưu lịch sử tên món
   quantity: integer("quantity").notNull().default(1),
-  unitPrice: integer("unit_price").notNull(),
+  unitPrice: integer("unit_price").notNull(), // Giữ nguyên để lưu lịch sử giá món
   totalPrice: integer("total_price").notNull(),
   note: text("note"),
 });
@@ -60,12 +61,14 @@ export const bills = sqliteTable("bills", {
   tableName: text("table_name").notNull(),
   totalAmount: integer("total_amount").notNull(),
   paymentMethod: text("payment_method").notNull().default("Tiền mặt"),
-  createdAt: text("created_at").notNull(), // Loại bỏ default(sql`CURRENT_TIMESTAMP`)
+  createdAt: text("created_at").notNull(),
+  discountAmount: integer("discount_amount").notNull().default(0),
 });
 
 // Zod Schemas
 export const insertTableSchema = createInsertSchema(tables).omit({ id: true });
 export const insertMenuCollectionSchema = createInsertSchema(menuCollections).omit({ id: true, createdAt: true });
+// insertMenuItemSchema không cần thay đổi vì nó không liên quan đến nullable trên orderItems
 export const insertMenuItemSchema = createInsertSchema(menuItems).omit({ id: true });
 export const insertOrderSchema = createInsertSchema(orders).omit({
   id: true,
@@ -75,7 +78,6 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
 });
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });
 export const insertBillSchema = createInsertSchema(bills).omit({ id: true, createdAt: true });
-
 
 // Types
 export type Table = typeof tables.$inferSelect;

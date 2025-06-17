@@ -77,7 +77,7 @@ export default function TableGrid({ tables, selectedTableId, onTableSelect }: Ta
         ))}
       </div>
 
-      <div className="grid grid-cols-4 md:grid-cols-4 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 md:grid-cols-4 lg:grid-cols-4 gap-4">
         {/* Render regular tables (Bàn 1-22) */}
         {regularTables.map((table) => (
           <div

@@ -1,7 +1,7 @@
 // hoangnecon/35mmcf/35mmcf-fa723ba3b9b96db36942ef1dc83a721ec6f65899/server/routes.ts
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage } from "./storage"; // Đảm bảo import đúng instance storage
 import {
   insertOrderSchema,
   insertOrderItemSchema,
@@ -19,7 +19,7 @@ import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
 import ExcelJS from 'exceljs';
 import { format } from 'date-fns';
-import { formatVND, formatDateTime } from "@shared/utils"; // THAY ĐỔI DÒNG NÀY để import formatDateTime
+import { formatVND, formatDateTime } from "@shared/utils";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Tables
@@ -139,7 +139,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/menu-items", async (req, res) => {
     try {
       const collectionId = req.query.collectionId ? parseInt(req.query.collectionId as string) : null;
-      const menuItems = await storage.getMenuItems(collectionId);
+      const searchTerm = req.query.searchTerm as string | undefined;
+      const category = req.query.category as string | undefined;
+
+      // Dòng này gây lỗi nếu storage.getMenuItems không phải là hàm
+      const menuItems = await storage.getMenuItems(collectionId, searchTerm, category);
       res.json(menuItems);
     } catch (error) {
       console.error("Failed to fetch menu items:", error);
@@ -195,7 +199,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const orders = await storage.getOrders();
       res.json(orders);
-    } catch (error) {
+    }
+    catch (error) {
       console.error("Failed to fetch orders:", error);
       res.status(500).json({ message: "Failed to fetch orders" });
     }
@@ -473,12 +478,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/revenue/daily", async (req, res) => {
     try {
       const dateString = req.query.date as string | undefined;
-      const date = dateString ? new Date(dateString) : new Date(); // Parse directly to Date object (will be UTC)
+      const date = dateString ? new Date(dateString) : new Date();
       if (isNaN(date.getTime())) {
         return res.status(400).json({ message: "Invalid date format" });
       }
       console.log(`[Backend API] /api/revenue/daily: Received dateString='${dateString}', parsedDate=${date.toISOString()}.`);
-      const revenue = await storage.getDailyRevenue(date); // Pass the UTC Date object
+      const revenue = await storage.getDailyRevenue(date);
       console.log(`[Backend API] /api/revenue/daily: Returning revenue: ${revenue}.`);
       res.json({ revenue });
     } catch (error) {
@@ -490,12 +495,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/revenue/by-table", async (req, res) => {
     try {
       const dateString = req.query.date as string | undefined;
-      const date = dateString ? new Date(dateString) : new Date(); // Parse directly to Date object (will be UTC)
+      const date = dateString ? new Date(dateString) : new Date();
       if (isNaN(date.getTime())) {
         return res.status(400).json({ message: "Invalid date format" });
       }
       console.log(`[Backend API] /api/revenue/by-table: Received dateString='${dateString}', parsedDate=${date.toISOString()}.`);
-      const revenueByTable = await storage.getRevenueByTable(date); // Pass the UTC Date object
+      const revenueByTable = await storage.getRevenueByTable(date);
       console.log(`[Backend API] /api/revenue/by-table: Returning ${revenueByTable.length} entries.`);
       res.json(revenueByTable);
     } catch (error) {
@@ -504,27 +509,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Thêm route để lấy danh sách các bill đã hoàn thành (nếu cần cho báo cáo chi tiết hơn)
   app.get("/api/bills", async (req, res) => {
     try {
-      const { startDate, endDate } = req.query; // These are now full ISO strings
+      const { startDate, endDate } = req.query;
       let start: Date | undefined;
       let end: Date | undefined;
 
       if (startDate) {
-        start = new Date(startDate as string); // Parse directly to Date object (will be UTC)
+        start = new Date(startDate as string);
         if (isNaN(start.getTime())) {
           return res.status(400).json({ message: "Invalid startDate format" });
         }
       }
       if (endDate) {
-        end = new Date(endDate as string); // Parse directly to Date object (will be UTC)
+        end = new Date(endDate as string);
         if (isNaN(end.getTime())) {
           return res.status(400).json({ message: "Invalid endDate format" });
         }
       }
       console.log(`[Backend API] /api/bills: Received startDate='${startDate}', endDate='${endDate}'.`);
-      const bills = await storage.getBills(start, end); // Pass the UTC Date objects
+      const bills = await storage.getBills(start, end);
       console.log(`[Backend API] /api/bills: Returning ${bills.length} bills.`);
       res.json(bills);
     } catch (error) {
@@ -533,7 +537,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // THÊM ROUTE MỚI: Lấy chi tiết các món trong một bill
   app.get("/api/bills/:id/items", async (req, res) => {
     try {
       const billId = parseInt(req.params.id);
@@ -558,10 +561,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // THÊM ROUTE MỚI: Xuất Excel
   app.get("/api/reports/export-bills", async (req, res) => {
     try {
-      const { startDate, endDate } = req.query; // Nhận các tham số ngày tháng (ISO strings)
+      const { startDate, endDate } = req.query;
       let start: Date | undefined;
       let end: Date | undefined;
 
@@ -585,46 +587,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Bao cao doanh thu');
 
-      // Định nghĩa các cột cho Excel
       worksheet.columns = [
         { header: 'ID Bill', key: 'id', width: 10 },
         { header: 'ID Đơn hàng', key: 'orderId', width: 15 },
         { header: 'Tên Bàn', key: 'tableName', width: 15 },
         { header: 'Phương thức TT', key: 'paymentMethod', width: 15 },
-        { header: 'Tổng tiền', key: 'totalAmount', width: 15, style: { numFmt: '#,##0' } }, // Định dạng số tiền
+        { header: 'Chiết khấu', key: 'discountAmount', width: 15, style: { numFmt: '#,##0' } },
+        { header: 'Tổng tiền', key: 'totalAmount', width: 15, style: { numFmt: '#,##0' } },
         { header: 'Thời gian hoàn tất', key: 'createdAt', width: 25 },
       ];
 
-      // Thêm dữ liệu vào các hàng
       for (const bill of billsToExport) {
         worksheet.addRow({
           id: bill.id,
           orderId: bill.orderId,
           tableName: bill.tableName,
           paymentMethod: bill.paymentMethod,
+          discountAmount: bill.discountAmount,
           totalAmount: bill.totalAmount,
-          createdAt: formatDateTime(bill.createdAt), // Định dạng thời gian bằng hàm mới
+          createdAt: formatDateTime(bill.createdAt),
         });
       }
 
-      // Đặt các header phản hồi để trình duyệt biết đây là file Excel
       console.log('[Backend API] Setting Content-Type and Content-Disposition headers (via writeHead).');
       res.writeHead(200, {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="BaoCaoDoanhThu_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx"`
       });
 
-      // Ghi workbook vào stream phản hồi
       await workbook.xlsx.write(res);
-      res.end(); // Kết thúc phản hồi
+      res.end();
       console.log('[Backend API] Excel file generated and sent successfully.');
     } catch (error) {
       console.error("Failed to export bills to Excel:", error);
-      // Đảm bảo gửi phản hồi lỗi phù hợp nếu có lỗi xảy ra trước khi headers được gửi
       if (!res.headersSent) {
           res.status(500).json({ message: "Failed to export bills to Excel" });
       } else {
-          // Nếu headers đã được gửi (ví dụ: một phần file đã được ghi), chỉ log lỗi và kết thúc
           res.end();
       }
     }

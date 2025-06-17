@@ -7,21 +7,21 @@ import {
   type Bill, type InsertBill,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, sum, inArray } from "drizzle-orm";
-import { getVietnamCurrentIsoString } from "@shared/utils"; // Import hàm mới
+import { eq, and, sql, sum, inArray, like } from "drizzle-orm"; // Đảm bảo 'like' được import
+import { getVietnamCurrentIsoString } from "@shared/utils";
 
 export interface IStorage {
   getTables(): Promise<Table[]>;
   getTable(id: number): Promise<Table | undefined>;
   createTable(table: InsertTable): Promise<Table>;
   updateTableStatus(id: number, status: string): Promise<Table | undefined>;
-  deleteTable(id: number): Promise<boolean>;
+  deleteTable(id: boolean): Promise<boolean>; // Đã sửa kiểu dữ liệu để khớp với lớp DatabaseStorage
   getMenuCollections(): Promise<MenuCollection[]>;
   getMenuCollection(id: number): Promise<MenuCollection | undefined>;
   createMenuCollection(collection: InsertMenuCollection): Promise<MenuCollection>;
   updateMenuCollection(id: number, updates: Partial<MenuCollection>): Promise<MenuCollection | undefined>;
   deleteMenuCollection(id: number): Promise<boolean>;
-  getMenuItems(collectionId?: number | null): Promise<MenuItem[]>;
+  getMenuItems(collectionId?: number | null, searchTerm?: string, category?: string): Promise<MenuItem[]>;
   getMenuItem(id: number): Promise<MenuItem | undefined>;
   createMenuItem(item: InsertMenuItem): Promise<MenuItem>;
   updateMenuItem(id: number, updates: Partial<MenuItem>): Promise<MenuItem | undefined>;
@@ -61,13 +61,13 @@ export class MemStorage implements IStorage {
   async getTable(id: number): Promise<Table | undefined> { return undefined; }
   async createTable(table: InsertTable): Promise<Table> { throw new Error("Not implemented"); }
   async updateTableStatus(id: number, status: string): Promise<Table | undefined> { return undefined; }
-  async deleteTable(id: number): Promise<boolean> { return false; }
+  async deleteTable(id: boolean): Promise<boolean> { return false; } // Đã sửa kiểu dữ liệu để khớp với lớp DatabaseStorage
   async getMenuCollections(): Promise<MenuCollection[]> { return []; }
   async getMenuCollection(id: number): Promise<MenuCollection | undefined> { return undefined; }
   async createMenuCollection(collection: InsertMenuCollection): Promise<MenuCollection> { throw new Error("Not implemented"); }
   async updateMenuCollection(id: number, updates: Partial<MenuCollection>): Promise<MenuCollection | undefined> { return undefined; }
   async deleteMenuCollection(id: number): Promise<boolean> { return false; }
-  async getMenuItems(collectionId?: number | null): Promise<MenuItem[]> { return []; }
+  async getMenuItems(collectionId?: number | null, searchTerm?: string, category?: string): Promise<MenuItem[]> { return []; }
   async getMenuItem(id: number): Promise<MenuItem | undefined> { return undefined; }
   async createMenuItem(item: InsertMenuItem): Promise<MenuItem> { throw new Error("Not implemented"); }
   async updateMenuItem(id: number, updates: Partial<MenuItem>): Promise<MenuItem | undefined> { return undefined; }
@@ -103,8 +103,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateOrder(id: number, updates: Partial<Omit<Order, 'id' | 'createdAt' | 'tableId' | 'tableName' | 'updatedAt'>>): Promise<Order | undefined> {
-    const vietnamCurrentIsoString = getVietnamCurrentIsoString(); // Lấy thời gian VN hiện tại, dạng ISO UTC
-    const finalUpdates = { ...updates, updatedAt: vietnamCurrentIsoString }; // Cập nhật updated_at tự động (có thể giữ nguyên hoặc dùng vietnamCurrentIsoString)
+    const vietnamCurrentIsoString = getVietnamCurrentIsoString();
+    const finalUpdates = { ...updates, updatedAt: vietnamCurrentIsoString };
     const [updatedOrder] = await db
       .update(orders)
       .set(finalUpdates)
@@ -169,14 +169,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async completeOrder(id: number, paymentMethod: string, discountAmount: number): Promise<Order | undefined> {
-    const vietnamCurrentIsoString = getVietnamCurrentIsoString(); // Lấy thời gian VN hiện tại, dạng ISO UTC
+    const vietnamCurrentIsoString = getVietnamCurrentIsoString();
 
     const [completedOrder] = await db
       .update(orders)
       .set({
         status: 'completed',
-        completedAt: vietnamCurrentIsoString, // CẬP NHẬT: Lưu giờ Việt Nam (dưới dạng UTC)
-        updatedAt: vietnamCurrentIsoString // Cập nhật updated_at tự động (có thể giữ nguyên hoặc dùng vietnamCurrentIsoString)
+        completedAt: vietnamCurrentIsoString,
+        updatedAt: vietnamCurrentIsoString
       })
       .where(eq(orders.id, id))
       .returning();
@@ -193,8 +193,8 @@ export class DatabaseStorage implements IStorage {
         tableName: completedOrder.tableName,
         totalAmount: finalAmount,
         paymentMethod: paymentMethod,
-        // CẬP NHẬT: Đảm bảo bill createdAt cũng là giờ Việt Nam
         createdAt: vietnamCurrentIsoString,
+        discountAmount: discountAmount,
       };
       await this.createBill(newBillData);
       console.log(`DatabaseStorage: Created bill for order ${completedOrder.id}`);
@@ -206,7 +206,7 @@ export class DatabaseStorage implements IStorage {
     const vietnamCurrentIsoString = getVietnamCurrentIsoString();
     const [updatedOrder] = await db
       .update(orders)
-      .set({ note, updatedAt: vietnamCurrentIsoString }) // Cập nhật updated_at
+      .set({ note, updatedAt: vietnamCurrentIsoString })
       .where(eq(orders.id, orderId))
       .returning();
     return updatedOrder;
@@ -223,8 +223,8 @@ export class DatabaseStorage implements IStorage {
         .set({
           status: 'cancelled',
           total: 0,
-          completedAt: vietnamCurrentIsoString, // Đặt completedAt khi hủy
-          updatedAt: vietnamCurrentIsoString // Cập nhật updated_at
+          completedAt: vietnamCurrentIsoString,
+          updatedAt: vietnamCurrentIsoString
         })
         .where(eq(orders.id, orderId))
         .returning();
@@ -253,7 +253,6 @@ export class DatabaseStorage implements IStorage {
         throw new Error(`Order with ID ${orderId} not found.`);
       }
 
-      // Fetch current order items within the transaction
       const currentOrderItems = tx.select().from(orderItems).where(eq(orderItems.orderId, orderId)).all();
       
       let totalPartialPaymentAmount = 0;
@@ -290,7 +289,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       const finalPartialPaymentAmount = totalPartialPaymentAmount - partialDiscountAmount;
-      const vietnamCurrentIsoString = getVietnamCurrentIsoString(); // Lấy thời gian VN hiện tại, dạng ISO UTC
+      const vietnamCurrentIsoString = getVietnamCurrentIsoString();
 
       const newBillData: InsertBill = {
         orderId: originalOrder.id,
@@ -298,7 +297,8 @@ export class DatabaseStorage implements IStorage {
         tableName: originalOrder.tableName,
         totalAmount: finalPartialPaymentAmount,
         paymentMethod: paymentMethod,
-        createdAt: vietnamCurrentIsoString, // CẬP NHẬT: Lưu giờ Việt Nam (dạng UTC)
+        createdAt: vietnamCurrentIsoString,
+        discountAmount: partialDiscountAmount,
       };
       tx.insert(bills).values(newBillData).run();
 
@@ -315,9 +315,8 @@ export class DatabaseStorage implements IStorage {
         .set({
           total: newOrderTotal,
           status: newOrderStatus,
-          // CẬP NHẬT completedAt nếu đơn hàng được hoàn tất
           completedAt: newOrderStatus === 'completed' ? vietnamCurrentIsoString : originalOrder.completedAt,
-          updatedAt: vietnamCurrentIsoString, // Cập nhật updated_at
+          updatedAt: vietnamCurrentIsoString,
         })
         .where(eq(orders.id, orderId))
         .returning()
@@ -341,7 +340,23 @@ export class DatabaseStorage implements IStorage {
   async createMenuCollection(collection: InsertMenuCollection): Promise<MenuCollection> { const [newCollection] = await db.insert(menuCollections).values(collection).returning(); return newCollection; }
   async updateMenuCollection(id: number, updates: Partial<MenuCollection>): Promise<MenuCollection | undefined> { const [updatedCollection] = await db.update(menuCollections).set(updates).where(eq(menuCollections.id, id)).returning(); return updatedCollection; }
   async deleteMenuCollection(id: number): Promise<boolean> { const linkedItems = await db.select({ id: menuItems.id }).from(menuItems).where(eq(menuItems.menuCollectionId, id)).limit(1); if (linkedItems.length > 0) { return false; } const result = await db.delete(menuCollections).where(eq(menuCollections.id, id)).returning({ id: menuCollections.id }); return result.length > 0; }
-  async getMenuItems(collectionId?: number | null): Promise<MenuItem[]> { if (collectionId !== undefined && collectionId !== null) { return await db.select().from(menuItems).where(eq(menuItems.menuCollectionId, collectionId)); } return await db.select().from(menuItems); }
+  // Đảm bảo hàm getMenuItems được định nghĩa duy nhất và chính xác tại đây:
+  async getMenuItems(collectionId?: number | null, searchTerm?: string, category?: string): Promise<MenuItem[]> {
+      const conditions = [];
+      if (collectionId !== undefined && collectionId !== null) {
+          conditions.push(eq(menuItems.menuCollectionId, collectionId));
+      }
+
+      if (searchTerm) {
+          conditions.push(like(menuItems.name, `%${searchTerm}%`));
+      }
+
+      if (category) {
+          conditions.push(eq(menuItems.category, category));
+      }
+
+      return await db.select().from(menuItems).where(and(...conditions));
+  }
   async getMenuItem(id: number): Promise<MenuItem | undefined> { const [item] = await db.select().from(menuItems).where(eq(menuItems.id, id)); return item; }
   async createMenuItem(item: InsertMenuItem): Promise<MenuItem> { const [newItem] = await db.insert(menuItems).values(item).returning(); return newItem; }
   async updateMenuItem(id: number, updates: Partial<MenuItem>): Promise<MenuItem | undefined> { const [updatedItem] = await db.update(menuItems).set(updates).where(eq(menuItems.id, id)).returning(); return updatedItem; }
@@ -353,17 +368,16 @@ export class DatabaseStorage implements IStorage {
     const vietnamCurrentIsoString = getVietnamCurrentIsoString();
     const [newOrder] = await db.insert(orders).values({ 
       ...order, 
-      createdAt: vietnamCurrentIsoString, // Lưu giờ VN
-      updatedAt: vietnamCurrentIsoString, // Cập nhật updated_at cũng là giờ VN
+      createdAt: vietnamCurrentIsoString,
+      updatedAt: vietnamCurrentIsoString,
     }).returning(); 
     return newOrder; 
   }
   async getOrderItems(orderId: number): Promise<OrderItem[]> { return await db.select().from(orderItems).where(eq(orderItems.orderId, orderId)); }
 
   async getDailyRevenue(date?: Date): Promise<number> {
-    // 'date' parameter là một đối tượng Date UTC đại diện cho bắt đầu ngày cục bộ.
-    const startOfQueryRange = date ? date : new Date(new Date().toISOString().split('T')[0]); // Sử dụng Date object nhận được
-    const endOfQueryRange = new Date(startOfQueryRange.getTime() + 24 * 60 * 60 * 1000); // Thêm 24 giờ để có được bắt đầu ngày UTC tiếp theo
+    const startOfQueryRange = date ? date : new Date(new Date().toISOString().split('T')[0]);
+    const endOfQueryRange = new Date(startOfQueryRange.getTime() + 24 * 60 * 60 * 1000);
 
     console.log(`[Storage] getDailyRevenue: Querying for received Date: ${date?.toISOString() || 'current UTC day'}`);
     console.log(`[Storage] getDailyRevenue: UTC range: ${startOfQueryRange.toISOString()} to ${endOfQueryRange.toISOString()}`);
@@ -412,7 +426,6 @@ export class DatabaseStorage implements IStorage {
   async getBills(startDateParam?: Date, endDateParam?: Date): Promise<Bill[]> {
     let query = db.select().from(bills);
     if (startDateParam && endDateParam) {
-      // startDateParam và endDateParam là các đối tượng Date UTC đã được chuẩn hóa từ frontend.
       console.log(`[Storage] getBills: Querying for received Dates: start=${startDateParam.toISOString()}, end=${endDateParam.toISOString()}`);
       
       query = query.where(and(

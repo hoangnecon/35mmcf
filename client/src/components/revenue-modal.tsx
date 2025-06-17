@@ -21,6 +21,7 @@ interface RevenueModalProps {
   initialDate?: Date; // Thêm prop này
 }
 
+// Cập nhật interface để bao gồm discountAmount
 interface BillWithDetails extends any {
   items: {
     id: number;
@@ -29,6 +30,7 @@ interface BillWithDetails extends any {
     unitPrice: number;
     totalPrice: number;
   }[];
+  discountAmount?: number; // ĐÃ THÊM: discountAmount
 }
 
 // KHÔNG CẦN ĐỊNH NGHĨA TIME_ZONE NỮA NẾU KHÔNG DÙNG date-fns-tz
@@ -71,13 +73,15 @@ export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueMo
     queryKey: ["/api/revenue/daily", getUtcIsoStringForLocalDayStart(selectedDate)], // Truyền chuỗi ISO đầy đủ
     enabled: isOpen,
     queryFn: async ({ queryKey }) => {
-      const dateParam = queryKey[1] ? `?date=${queryKey[1]}` : ''; // Server sẽ nhận chuỗi ISO đầy đủ
-      const response = await fetch(`/api/revenue/daily${dateParam}`);
+      const [_key, dateParam] = queryKey as [string, string | undefined];
+      const url = dateParam ? `/api/revenue/daily?date=${dateParam}` : '/api/revenue/daily';
+      const response = await fetch("http://localhost:5000" + url); // Đảm bảo gọi đúng cổng
       if (!response.ok) {
-        throw new Error("Failed to fetch daily revenue");
+        const errorBody = await response.text();
+        throw new Error(errorBody || "Failed to fetch daily revenue");
       }
       return response.json();
-    }
+    },
   });
 
   const { data: bills = [] } = useQuery({
@@ -247,6 +251,9 @@ export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueMo
                       Phương thức TT
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Chiết khấu {/* ĐÃ THÊM */}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Tổng tiền
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -260,7 +267,7 @@ export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueMo
                 <tbody className="bg-white divide-y divide-gray-200">
                   {billsToDisplay.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                      <td colSpan={6} className="px-6 py-8 text-center text-gray-500"> {/* ĐÃ SỬA: colSpan */}
                         Chưa có bill nào trong ngày
                       </td>
                     </tr>
@@ -276,6 +283,9 @@ export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueMo
                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${bill.paymentMethod === 'Tiền mặt' ? 'bg-blue-100 text-blue-800' : bill.paymentMethod === 'Chuyển khoản' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
                               {bill.paymentMethod}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-semibold"> {/* ĐÃ THÊM */}
+                            {formatVND(bill.discountAmount || 0)} {/* ĐÃ THÊM */}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-primary font-semibold">
                             {formatVND(bill.totalAmount)}
@@ -328,7 +338,7 @@ export default function RevenueModal({ isOpen, onClose, initialDate }: RevenueMo
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {selectedBillDetails.items.map((item: any) => ( // items đã có sẵn trong selectedBillDetails từ query bills
+                  {selectedBillDetails.items.map((item: any) => ( 
                     <tr key={item.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {item.menuItemName}

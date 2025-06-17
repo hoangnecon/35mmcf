@@ -69,6 +69,7 @@ export default function PosPage() {
   const [editingItem, setEditingItem] = useState<MenuItemType | null>(null);
   const [showMenuItemForm, setShowMenuItemForm] = useState(false);
   const [selectedDateForRevenue, setSelectedDateForRevenue] = useState<Date | undefined>(new Date());
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -186,9 +187,9 @@ export default function PosPage() {
   });
 
   const { data: menuItems = [], isLoading: isLoadingMenuItems } = useQuery<MenuItemType[]>({
-    queryKey: ["/api/menu-items", { collectionId: selectedCollectionId, searchTerm }],
+    queryKey: ["/api/menu-items", { collectionId: selectedCollectionId, searchTerm, category: selectedCategory }],
     queryFn: async ({ queryKey }) => {
-      const [_key, { collectionId, searchTerm }] = queryKey as [string, { collectionId: number | null, searchTerm: string }];
+      const [_key, { collectionId, searchTerm, category }] = queryKey as [string, { collectionId: number | null, searchTerm: string, category: string | null }];
       let url = `/api/menu-items`;
       const params = new URLSearchParams();
       if (collectionId !== null && collectionId !== undefined) {
@@ -196,6 +197,9 @@ export default function PosPage() {
       }
       if (searchTerm) {
         params.append("searchTerm", searchTerm);
+      }
+      if (category && category !== ALL_COLLECTIONS_VALUE) {
+        params.append("category", category);
       }
       if (params.toString()) {
         url += `?${params.toString()}`;
@@ -433,8 +437,8 @@ export default function PosPage() {
     }
   };
 
-  const categories = ["Đồ uống", "Đồ ăn", "Đồ ăn vặt", "Tráng miệng", "Món chính", "Khai vị"];
-  const selectedTableInfo = selectedTableId ? tables.find(t => t.id === selectedTableId) : null;
+  const categories = ["Trà", "Cà phê", "Topping", "Sữa chua"];
+  const selectedTableInfo = selectedTableId ? tables.find(t => t.id === selectedTableId) : null; // Đảm bảo khai báo duy nhất một lần
 
   const form = useForm<MenuItemFormData>({
     resolver: zodResolver(menuItemFormSchemaClient),
@@ -463,7 +467,7 @@ export default function PosPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/menu-items", { collectionId: selectedCollectionId, searchTerm }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items", { collectionId: selectedCollectionId, searchTerm, category: selectedCategory }] });
       setShowMenuItemForm(false);
       form.reset({ name: "", price: 0, category: "", imageUrl: "", available: 1, menuCollectionId: selectedCollectionId });
       toast({ title: "Thành công", description: "Đã thêm món mới vào thực đơn" });
@@ -485,7 +489,7 @@ export default function PosPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/menu-items", { collectionId: selectedCollectionId, searchTerm }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items", { collectionId: selectedCollectionId, searchTerm, category: selectedCategory }] });
       setEditingItem(null);
       setShowMenuItemForm(false);
       form.reset({ name: "", price: 0, category: "", imageUrl: "", available: 1, menuCollectionId: selectedCollectionId });
@@ -507,7 +511,7 @@ export default function PosPage() {
       return { success: true };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/menu-items", { collectionId: selectedCollectionId, searchTerm }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items", { collectionId: selectedCollectionId, searchTerm, category: selectedCategory }] });
       toast({ title: "Thành công", description: "Đã xóa món ăn khỏi thực đơn" });
     },
     onError: (error: any) => {
@@ -542,6 +546,7 @@ export default function PosPage() {
       await deleteMenuItemMutation.mutateAsync(id);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -592,7 +597,7 @@ export default function PosPage() {
                 onTableSelect={handleTableSelect}
               />
             </div>
-            <div className="w-[35rem] bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
+            <div className="w-96 bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
               {isLoadingCurrentOrder || isFetchingCurrentOrder ? (
                 <div className="p-4 text-center text-gray-500">Đang tải đơn hàng</div>
               ) : (
@@ -620,6 +625,25 @@ export default function PosPage() {
                   <Input id="search-menu" placeholder="Tìm kiếm..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 </div>
+              </div>
+              <Separator className="my-4" />
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center"> <List className="h-4 w-4 mr-1 text-gray-500" /> Phân loại </h4>
+                <Select
+                  value={selectedCategory === null ? ALL_COLLECTIONS_VALUE : selectedCategory}
+                  onValueChange={(value) => {
+                    if (value === ALL_COLLECTIONS_VALUE) { setSelectedCategory(null); }
+                    else { setSelectedCategory(value); }
+                  }}
+                >
+                  <SelectTrigger> <SelectValue placeholder="Tất cả loại" /> </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_COLLECTIONS_VALUE}>Tất cả loại</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat} value={cat}> {cat} </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <Separator className="my-4" />
               <div className="mb-4">
@@ -943,7 +967,7 @@ export default function PosPage() {
                 </TabsContent>
               </Tabs>
             </div>
-            <div className="w-[40rem] bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
+            <div className="w-96 bg-white border-l border-gray-200 shrink-0 h-[calc(100vh-150px)] overflow-y-auto">
               {isLoadingCurrentOrder || isFetchingCurrentOrder ? (
                 <div className="p-4 text-center text-gray-500">Đang tải đơn hàng...</div>
               ) : (
